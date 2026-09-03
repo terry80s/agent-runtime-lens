@@ -138,7 +138,7 @@ function classifyAgent(observation, now = Date.now(), slowThresholdMs = 45000, f
   if (!observation) return { state: STATES.IDLE, color: 'gray', label: 'No agent', confidence: 'observed' };
   const observedAt = Number.isFinite(observation.lastActivityAt) ? observation.lastActivityAt : now;
   const age = Math.max(0, now - observedAt);
-  if (observation.unsupportedTelemetry) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Activity unavailable', statusLabel: observation.id === 'copilot' ? 'Copilot' : observation.name, age };
+  if (observation.unsupportedTelemetry) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Activity unavailable', shortLabel: 'Limited', statusLabel: observation.id === 'copilot' ? 'Copilot' : observation.name, age };
   if (observation.failed && age <= failureAttentionMs) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Failed', age };
   if (observation.failed) return { ...observation, active: false, state: STATES.IDLE, color: 'gray', label: 'Idle', age, evidence: `Previous session failed ${formatAge(age)} ago; no session is active` };
   if (observation.cancelled || observation.phase === 'cancelled') return { ...observation, state: STATES.CANCELLED, color: 'gray', label: 'Cancelled', age };
@@ -169,9 +169,22 @@ function formatAge(milliseconds) {
   return `${Math.round(minutes / 60)}h`;
 }
 
+function agentPriority(agent) {
+  if (!agent) return -1;
+  if (agent.state === STATES.APPROVAL || agent.color === 'blue') return 70;
+  if (agent.state === STATES.FAILED || agent.color === 'red') return 60;
+  if (agent.active && agent.state !== STATES.UNKNOWN) return 50;
+  if (agent.active) return 40;
+  if (agent.state === STATES.COMPLETED) return 30;
+  if (agent.state === STATES.IDLE || agent.state === STATES.CANCELLED) return 20;
+  if (agent.visibilityLimited) return 10;
+  if (agent.unsupportedTelemetry) return 5;
+  return agent.color === 'green' ? 50 : agent.color === 'yellow' ? 45 : 8;
+}
+
 function choosePrimary(agents) {
   if (!Array.isArray(agents) || agents.length === 0) return undefined;
-  return [...agents].sort((a, b) => Number(Boolean(a?.unsupportedTelemetry)) - Number(Boolean(b?.unsupportedTelemetry)) || ((SEVERITY[b?.color] ?? 0) - (SEVERITY[a?.color] ?? 0)) || ((Number(b?.lastActivityAt) || 0) - (Number(a?.lastActivityAt) || 0)))[0];
+  return [...agents].sort((a, b) => agentPriority(b) - agentPriority(a) || ((Number(b?.lastActivityAt) || 0) - (Number(a?.lastActivityAt) || 0)))[0];
 }
 
 function agentStatusIcon(agent) {
@@ -180,6 +193,12 @@ function agentStatusIcon(agent) {
   if (agent.visibilityLimited || agent.unsupportedTelemetry) return 'circle-slash';
   if (agent.state === STATES.UNKNOWN && agent.active) return 'circle-outline';
   return agent.color === 'gray' ? 'circle-slash' : 'circle-filled';
+}
+
+function agentStatusText(agent, mode = 'text') {
+  const icon = `$(${agentStatusIcon(agent)})`;
+  const state = agent?.shortLabel || agent?.label || 'None';
+  return mode === 'compact' ? `${icon} ${state}` : `${icon} Agent: ${state}`;
 }
 
 function redact(value) {
@@ -200,4 +219,4 @@ function redact(value) {
   return value;
 }
 
-module.exports = { STATES, hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact };
+module.exports = { STATES, hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, agentPriority, choosePrimary, agentStatusIcon, agentStatusText, redact };

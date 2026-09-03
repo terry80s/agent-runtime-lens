@@ -4,7 +4,7 @@ const vscode = require('vscode');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact } = require('./core');
+const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusText, redact } = require('./core');
 const { detectAgents, sampleHost, sampleWindowsPeerFromWsl } = require('./detectors');
 const { createClineApiAdapter } = require('./cline-api');
 
@@ -134,24 +134,20 @@ function updateStatus() {
   const agentColor = primary?.state === 'idle' ? 'green' : primary?.color || 'gray';
   const dominant = dominantColor(snapshot.health.color, agentColor);
   const mode = vscode.workspace.getConfiguration('agentRuntimeLens').get('statusBarMode', 'text');
-  const agentIcon = `$(${agentStatusIcon(primary)})`;
-  if (!primary) statusItem.text = mode === 'compact' ? `${agentIcon}` : `${agentIcon} No agent`;
-  else if (primary.statusLabel) statusItem.text = `${agentIcon} ${primary.statusLabel}`;
-  else {
-    const conciseState = primary.shortLabel || primary.label;
-    statusItem.text = mode === 'compact' ? `${agentIcon} ${conciseState}` : `${agentIcon} ${primary.name}: ${conciseState}`;
-  }
+  statusItem.text = agentStatusText(primary, mode);
   statusItem.color = dominant === 'green' ? undefined : foregroundColors[dominant];
   statusItem.backgroundColor = dominant === 'red' || dominant === 'yellow' ? colors[dominant] : undefined;
   const healthLabel = snapshot.health.color === 'red' ? 'Critical' : snapshot.health.color === 'yellow' ? 'Pressure' : 'Healthy';
   const environment = environmentKind(snapshot.remoteName, snapshot.host.resourceScope);
   const scope = environment.title;
-  const agentAge = primary?.age != null ? duration(primary.age) : '—';
+  const agentRows = snapshot.agents.length
+    ? snapshot.agents.map(agent => `| ${agent.name} | ${agent.label} | ${evidenceLabel(agent)} | ${agent.age != null ? duration(agent.age) : '—'} |`).join('\n')
+    : '| — | No agent | Observed | — |';
   const cpuTrend = trendLabel(trend(recentMetric('cpuPercent')));
   const memoryTrend = trendLabel(trend(recentMetric('memoryPercent')));
   const networkTrend = trendLabel(trend(recentMetric('networkLatencyMs'), 25));
   const peerLine = snapshot.peerHost ? `\n| Windows host | ${metricSummary(snapshot.peerHost)} |` : '';
-  statusItem.tooltip = new vscode.MarkdownString(`**Agent Runtime Lens** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n| ${primary?.name || '—'} | ${primary?.label || 'No agent'} | ${evidenceLabel(primary)} | ${agentAge} |\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
+  statusItem.tooltip = new vscode.MarkdownString(`**Agent Runtime Lens** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n${agentRows}\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
   statusItem.accessibilityInformation = { label: `Agent Runtime Lens. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Environment ${snapshot.health.color}.` };
   statusItem.show();
   const peerColor = snapshot.peerHost?.unavailable ? 'gray' : snapshot.peerHealth?.color || 'green';

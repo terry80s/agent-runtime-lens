@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact } = require('../src/core');
+const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, agentStatusText, redact } = require('../src/core');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -172,6 +172,15 @@ test('status icons distinguish active-but-undisclosed from unavailable visibilit
   assert.equal(agentStatusIcon({ state: 'reading', active: true, color: 'green' }), 'circle-filled');
 });
 
+test('status bar uses a stable generic Agent label and never leaks product names', () => {
+  for (const name of ['Cline', 'Claude Code', 'GitHub Copilot']) {
+    const text = agentStatusText({ name, state: 'reading', active: true, color: 'green', shortLabel: 'Reading' });
+    assert.equal(text, '$(circle-filled) Agent: Reading');
+    assert.doesNotMatch(text, /Cline|Claude|Copilot/);
+  }
+  assert.equal(agentStatusText(undefined), '$(circle-slash) Agent: None');
+});
+
 test('old persisted evidence is idle rather than working', () => {
   const result = classifyAgent({ name: 'Cline', active: false, processAlive: false, lastActivityAt: 0 }, 4000, 1000);
   assert.equal(result.color, 'gray');
@@ -217,6 +226,20 @@ test('primary agent is the one requiring most attention', () => {
   assert.equal(choosePrimary([]), undefined);
   assert.equal(choosePrimary(undefined), undefined);
   assert.equal(choosePrimary([{ name: 'Unknown' }, { name: 'Cline', color: 'yellow' }]).name, 'Cline');
+});
+
+test('active Claude Code outranks an installed-but-limited Cline', () => {
+  const cline = classifyAgent({ name: 'Cline', active: false, visibilityLimited: true, lastActivityAt: 2000 }, 3000);
+  const claude = classifyAgent({ name: 'Claude Code', phase: 'reading', active: true, processAlive: true, lastActivityAt: 1000 }, 3000);
+  assert.equal(choosePrimary([cline, claude]).name, 'Claude Code');
+});
+
+test('user waiting outranks failure, and failure outranks ordinary activity', () => {
+  const waiting = classifyAgent({ name: 'Cline', active: true, needsApproval: true, lastActivityAt: 1000 }, 2000);
+  const failed = classifyAgent({ name: 'Claude Code', active: false, failed: true, lastActivityAt: 1000 }, 2000);
+  const reading = classifyAgent({ name: 'Other', active: true, phase: 'reading', lastActivityAt: 1000 }, 2000);
+  assert.equal(choosePrimary([failed, reading, waiting]).name, 'Cline');
+  assert.equal(choosePrimary([reading, failed]).name, 'Claude Code');
 });
 
 test('diagnostic export redacts secrets and home usernames', () => {
