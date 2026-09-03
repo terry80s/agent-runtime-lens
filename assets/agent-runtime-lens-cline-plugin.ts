@@ -13,7 +13,7 @@ function emit(phase: string, detail?: string) {
   lastPhase = phase;
   lastEventAt = now;
   fs.mkdirSync(path.dirname(eventFile), { recursive: true });
-  fs.appendFileSync(eventFile, JSON.stringify({ timestamp: now, type: "agent_pulse", phase, detail }) + "\n");
+  fs.appendFileSync(eventFile, JSON.stringify({ timestamp: now, type: "agent_runtime_lens", phase, detail }) + "\n");
 }
 
 function toolPhase(name: string) {
@@ -28,11 +28,11 @@ function toolPhase(name: string) {
 }
 
 const plugin: AgentPlugin = {
-  name: "agent-pulse-observer",
+  name: "agent-runtime-lens-observer",
   manifest: { capabilities: ["hooks"] },
   setup(_api, ctx) {
     const root = ctx.workspaceInfo?.rootPath;
-    if (root) eventFile = path.join(root, ".cline", "agent-pulse-events.jsonl");
+    if (root) eventFile = path.join(root, ".cline", "agent-runtime-lens-events.jsonl");
   },
   hooks: {
     beforeRun() { emit("preparing_context"); },

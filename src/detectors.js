@@ -211,9 +211,15 @@ async function detectAgents(workspacePaths = []) {
   const candidates = [];
   let companionSignal;
   for (const workspacePath of workspacePaths) {
-    const eventPath = path.join(workspacePath, '.cline', 'agent-pulse-events.jsonl');
-    const event = readClineEventFile(eventPath);
-    if (event && (!companionSignal || event.lastActivityAt > companionSignal.lastActivityAt)) companionSignal = event;
+    const eventPaths = [
+      path.join(workspacePath, '.cline', 'agent-runtime-lens-events.jsonl'),
+      // Read-only migration fallback for workspaces that enabled the pre-rename observer.
+      path.join(workspacePath, '.cline', 'agent-pulse-events.jsonl')
+    ];
+    for (const eventPath of eventPaths) {
+      const event = readClineEventFile(eventPath);
+      if (event && (!companionSignal || event.lastActivityAt > companionSignal.lastActivityAt)) companionSignal = event;
+    }
   }
   if (companionSignal) {
     const age = Date.now() - companionSignal.lastActivityAt;

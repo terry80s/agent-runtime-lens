@@ -174,7 +174,7 @@ test('Cline semantic fields map phases without reading message text', () => {
 });
 
 test('Cline event file chooses the latest meaningful operation', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-events-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-events-'));
   const eventPath = path.join(root, 'messages.json');
   fs.writeFileSync(eventPath, JSON.stringify([{ ts: 1000, type: 'say', say: 'api_req_started', text: 'private' }, { ts: 2000, type: 'say', say: 'text', partial: true, text: 'private response' }]));
   const signal = readClineEventFile(eventPath);
@@ -184,9 +184,9 @@ test('Cline event file chooses the latest meaningful operation', () => {
 });
 
 test('Cline companion events expose waiting for user input', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-wait-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-wait-'));
   const eventPath = path.join(root, 'events.jsonl');
-  fs.writeFileSync(eventPath, JSON.stringify({ timestamp: 2000, type: 'agent_pulse', phase: 'waiting_input' }) + '\n');
+  fs.writeFileSync(eventPath, JSON.stringify({ timestamp: 2000, type: 'agent_runtime_lens', phase: 'waiting_input' }) + '\n');
   const signal = readClineEventFile(eventPath);
   assert.equal(signal.phase, 'waiting_input');
   assert.equal(signal.needsApproval, true);
@@ -199,7 +199,7 @@ test('Claude block types map phases without inspecting block content', () => {
 });
 
 test('cgroup v2 memory is calculated against the container allocation', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-cgroup-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-cgroup-'));
   fs.writeFileSync(path.join(root, 'memory.current'), '536870912');
   fs.writeFileSync(path.join(root, 'memory.max'), '1073741824');
   fs.writeFileSync(path.join(root, 'cpu.max'), '50000 100000');
@@ -212,7 +212,7 @@ test('cgroup v2 memory is calculated against the container allocation', () => {
 });
 
 test('host cgroup with no limits is not mislabeled as a container', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-host-cgroup-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-host-cgroup-'));
   fs.writeFileSync(path.join(root, 'memory.current'), '536870912');
   fs.writeFileSync(path.join(root, 'memory.max'), 'max');
   fs.writeFileSync(path.join(root, 'cpu.max'), 'max 100000');
@@ -222,7 +222,7 @@ test('host cgroup with no limits is not mislabeled as a container', () => {
 });
 
 test('cgroup v1 limits are supported for older Kubernetes and SSH hosts', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-cgroup-v1-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-cgroup-v1-'));
   for (const folder of ['memory', 'cpu', 'cpuacct']) fs.mkdirSync(path.join(root, folder));
   fs.writeFileSync(path.join(root, 'memory', 'memory.usage_in_bytes'), '536870912');
   fs.writeFileSync(path.join(root, 'memory', 'memory.limit_in_bytes'), '1073741824');
@@ -236,7 +236,7 @@ test('cgroup v1 limits are supported for older Kubernetes and SSH hosts', () => 
 });
 
 test('multi-root disk selection chooses the most constrained filesystem', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-disk-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-disk-'));
   const result = selectMostConstrainedDisk([root, path.join(root, 'missing')]);
   assert.equal(result.diskPath, root);
   assert.ok(result.diskTotalBytes > 0);
@@ -244,7 +244,7 @@ test('multi-root disk selection chooses the most constrained filesystem', () => 
 });
 
 test('Cline 4 session database is read without selecting prompt content', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-cline-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-cline-'));
   const dbPath = path.join(root, 'sessions.db');
   const db = new DatabaseSync(dbPath);
   db.exec('CREATE TABLE sessions (session_id TEXT, pid INTEGER, started_at INTEGER, ended_at INTEGER, status TEXT, interactive INTEGER, is_subagent INTEGER, updated_at INTEGER, prompt TEXT, messages_path TEXT, transcript_path TEXT, hook_path TEXT)');
@@ -259,7 +259,7 @@ test('Cline 4 session database is read without selecting prompt content', () => 
 });
 
 test('Cline database idle means waiting for a new prompt, not running', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-idle-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-idle-'));
   const dbPath = path.join(root, 'sessions.db');
   const db = new DatabaseSync(dbPath);
   db.exec('CREATE TABLE sessions (session_id TEXT, pid INTEGER, started_at INTEGER, ended_at INTEGER, status TEXT, interactive INTEGER, is_subagent INTEGER, updated_at INTEGER, messages_path TEXT, transcript_path TEXT, hook_path TEXT)');
@@ -273,7 +273,7 @@ test('Cline database idle means waiting for a new prompt, not running', () => {
 });
 
 test('terminal Cline lifecycle cannot be overwritten by an old tool event', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-terminal-event-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-terminal-event-'));
   const eventPath = path.join(root, 'events.jsonl');
   fs.writeFileSync(eventPath, JSON.stringify({ event: 'tool_started', timestamp: Date.now() }) + '\n');
   const dbPath = path.join(root, 'sessions.db');
@@ -288,7 +288,7 @@ test('terminal Cline lifecycle cannot be overwritten by an old tool event', () =
 });
 
 test('Cline database failure remains failed instead of becoming idle', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-failed-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-failed-'));
   const dbPath = path.join(root, 'sessions.db');
   const db = new DatabaseSync(dbPath);
   db.exec('CREATE TABLE sessions (session_id TEXT, started_at INTEGER, status TEXT)');
@@ -339,7 +339,7 @@ test('Cline cancellation is a neutral terminal state', () => {
 });
 
 test('Cline 4.1 database reader tolerates patch-version schema differences', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-pulse-cline-minimal-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-cline-minimal-'));
   const dbPath = path.join(root, 'sessions.db');
   const db = new DatabaseSync(dbPath);
   db.exec('CREATE TABLE sessions (session_id TEXT, started_at INTEGER, status TEXT)');

@@ -2,9 +2,9 @@
   "name": "ai-agent-runtime-lens",
   "displayName": "Agent Runtime Lens",
   "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "publisher": "terry80s",
-  "icon": "assets/agent-pulse-icon.png",
+  "icon": "assets/agent-runtime-lens-icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
   "contributes": {
     "colors": [
       {
-        "id": "agentPulse.status.green",
+        "id": "agentRuntimeLens.status.green",
         "description": "Agent Runtime Lens healthy status",
         "defaults": {
           "dark": "#3FB950",
@@ -49,7 +49,7 @@
         }
       },
       {
-        "id": "agentPulse.status.blue",
+        "id": "agentRuntimeLens.status.blue",
         "description": "Agent Runtime Lens user-attention status",
         "defaults": {
           "dark": "#58A6FF",
@@ -59,7 +59,7 @@
         }
       },
       {
-        "id": "agentPulse.status.yellow",
+        "id": "agentRuntimeLens.status.yellow",
         "description": "Agent Runtime Lens warning status",
         "defaults": {
           "dark": "#D29922",
@@ -69,7 +69,7 @@
         }
       },
       {
-        "id": "agentPulse.status.red",
+        "id": "agentRuntimeLens.status.red",
         "description": "Agent Runtime Lens failure status",
         "defaults": {
           "dark": "#F85149",
@@ -79,7 +79,7 @@
         }
       },
       {
-        "id": "agentPulse.status.gray",
+        "id": "agentRuntimeLens.status.gray",
         "description": "Agent Runtime Lens idle or unknown status",
         "defaults": {
           "dark": "#8B949E",
@@ -91,47 +91,47 @@
     ],
     "commands": [
       {
-        "command": "agentPulse.showStatus",
+        "command": "agentRuntimeLens.showStatus",
         "title": "Agent Runtime Lens: Show Current Status"
       },
       {
-        "command": "agentPulse.runDiagnosis",
+        "command": "agentRuntimeLens.runDiagnosis",
         "title": "Agent Runtime Lens: Is It Stuck?"
       },
       {
-        "command": "agentPulse.openDashboard",
+        "command": "agentRuntimeLens.openDashboard",
         "title": "Agent Runtime Lens: Open Dashboard"
       },
       {
-        "command": "agentPulse.enableClineIntegration",
+        "command": "agentRuntimeLens.enableClineIntegration",
         "title": "Agent Runtime Lens: Enable Cline Deep Visibility"
       },
       {
-        "command": "agentPulse.exportDiagnostics",
+        "command": "agentRuntimeLens.exportDiagnostics",
         "title": "Agent Runtime Lens: Export Diagnostics"
       },
       {
-        "command": "agentPulse.refresh",
+        "command": "agentRuntimeLens.refresh",
         "title": "Agent Runtime Lens: Refresh Now"
       }
     ],
     "configuration": {
       "title": "Agent Runtime Lens",
       "properties": {
-        "agentPulse.refreshIntervalSeconds": {
+        "agentRuntimeLens.refreshIntervalSeconds": {
           "type": "number",
           "default": 3,
           "minimum": 1,
           "maximum": 60,
           "description": "How often Agent Runtime Lens samples local evidence."
         },
-        "agentPulse.slowThresholdSeconds": {
+        "agentRuntimeLens.slowThresholdSeconds": {
           "type": "number",
           "default": 45,
           "minimum": 10,
           "description": "How long an unchanged active state lasts before it is marked slow."
         },
-        "agentPulse.statusBarMode": {
+        "agentRuntimeLens.statusBarMode": {
           "type": "string",
           "enum": [
             "minimal",
@@ -141,7 +141,7 @@
           "default": "text",
           "description": "Amount of detail shown in the status bar. Minimal hides the four resource values while keeping them in the Agent hover/dashboard."
         },
-        "agentPulse.showReloadButton": {
+        "agentRuntimeLens.showReloadButton": {
           "type": "boolean",
           "default": true,
           "description": "Show the small Reload Window rescue button in the status bar."

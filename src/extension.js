@@ -28,7 +28,7 @@ const colors = {
   yellow: new vscode.ThemeColor('statusBarItem.warningBackground'),
   blue: new vscode.ThemeColor('statusBarItem.prominentBackground')
 };
-const foregroundColors = Object.fromEntries(['green', 'blue', 'yellow', 'red', 'gray'].map(name => [name, new vscode.ThemeColor(`agentPulse.status.${name}`)]));
+const foregroundColors = Object.fromEntries(['green', 'blue', 'yellow', 'red', 'gray'].map(name => [name, new vscode.ThemeColor(`agentRuntimeLens.status.${name}`)]));
 
 function duration(ms) {
   const seconds = Math.max(0, Math.round(ms / 1000));
@@ -116,7 +116,7 @@ function renderDashboard() {
 
 function openDashboard() {
   if (!dashboard) {
-    dashboard = vscode.window.createWebviewPanel('agentPulse.dashboard', 'Agent Runtime Lens', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    dashboard = vscode.window.createWebviewPanel('agentRuntimeLens.dashboard', 'Agent Runtime Lens', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
     dashboard.onDidDispose(() => { dashboard = undefined; });
     dashboard.webview.onDidReceiveMessage(message => {
       if (message?.type === 'rawOpen') rawTimelineOpen = Boolean(message.value);
@@ -133,7 +133,7 @@ function updateStatus() {
   const primary = choosePrimary(snapshot.agents);
   const agentColor = primary?.state === 'idle' ? 'green' : primary?.color || 'gray';
   const dominant = dominantColor(snapshot.health.color, agentColor);
-  const mode = vscode.workspace.getConfiguration('agentPulse').get('statusBarMode', 'text');
+  const mode = vscode.workspace.getConfiguration('agentRuntimeLens').get('statusBarMode', 'text');
   const agentIcon = !primary ? '$(circle-slash)' : primary.state === 'idle' ? '$(circle-outline)' : primary.color === 'gray' ? '$(circle-slash)' : '$(circle-filled)';
   if (!primary) statusItem.text = mode === 'compact' ? `${agentIcon}` : `${agentIcon} No agent`;
   else if (primary.statusLabel) statusItem.text = `${agentIcon} ${primary.statusLabel}`;
@@ -184,7 +184,7 @@ function updateStatus() {
 
 async function refreshOnce() {
   try {
-    const config = vscode.workspace.getConfiguration('agentPulse');
+    const config = vscode.workspace.getConfiguration('agentRuntimeLens');
     const slowMs = config.get('slowThresholdSeconds', 45) * 1000;
     const workspacePaths = (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath);
     const [host, peerHost, observations] = await Promise.all([sampleHost(workspacePaths), sampleWindowsPeerFromWsl(), detectAgents(workspacePaths)]);
@@ -259,15 +259,15 @@ async function showStatus() {
   const healthLabel = snapshot.health.color === 'red' ? 'Critical' : snapshot.health.color === 'yellow' ? 'Pressure' : 'Healthy';
   items.push({ label: `$(pulse) Environment: ${healthLabel}`, description: `CPU ${snapshot.host.cpuPercent ?? '?'}% · Memory ${snapshot.host.memoryPercent ?? '?'}% · Disk free ${snapshot.host.diskFreePercent ?? '?'}% · Network ${snapshot.host.network ?? 'unknown'} ${snapshot.host.networkLatencyMs ?? '?'}ms` });
   items.push({ label: `$(plug) Cline live API: ${snapshot.integrations?.clineApi || 'checking'}`, description: snapshot.integrations?.clineApiShape?.length ? `Exported keys: ${snapshot.integrations.clineApiShape.join(', ')}` : 'This Cline cohort has not exposed a subscribable event API' });
-  items.push({ label: '$(graph) Open timeline dashboard', command: 'agentPulse.openDashboard' });
-  items.push({ label: '$(export) Export redacted diagnostics', command: 'agentPulse.exportDiagnostics' });
+  items.push({ label: '$(graph) Open timeline dashboard', command: 'agentRuntimeLens.openDashboard' });
+  items.push({ label: '$(export) Export redacted diagnostics', command: 'agentRuntimeLens.exportDiagnostics' });
   items.push({ label: '$(debug-restart) Reload VS Code Window', command: 'workbench.action.reloadWindow' });
   const selected = await vscode.window.showQuickPick(items, { title: 'Agent Runtime Lens — Current Status', placeHolder: 'Select an action or inspect the current evidence' });
   if (selected?.command) await vscode.commands.executeCommand(selected.command);
 }
 
 async function exportDiagnostics() {
-  const target = await vscode.window.showSaveDialog({ title: 'Export Agent Runtime Lens diagnostics', defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd(), `agent-pulse-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)), filters: { JSON: ['json'] } });
+  const target = await vscode.window.showSaveDialog({ title: 'Export Agent Runtime Lens diagnostics', defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd(), `agent-runtime-lens-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)), filters: { JSON: ['json'] } });
   if (!target) return;
   const payload = redact({ schemaVersion: 2, generatedAt: new Date().toISOString(), privacy: { includesPrompts: false, includesResponses: false, includesSourceCode: false, redacted: true }, capabilities: { cline: 'live-or-lifecycle', claudeCode: 'observed', githubCopilot: 'installed-only', localPeerFromWsl: true, localPeerFromSsh: false }, diagnosis: diagnosis(choosePrimary(snapshot.agents), snapshot.health), current: snapshot, timeline });
   await fs.promises.writeFile(target.fsPath, JSON.stringify(payload, null, 2), 'utf8');
@@ -278,8 +278,8 @@ async function exportDiagnostics() {
 async function enableClineIntegration() {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return vscode.window.showErrorMessage('Open a workspace before enabling Cline deep visibility.');
-  const destination = vscode.Uri.joinPath(folder.uri, '.cline', 'plugins', 'agent-pulse.ts');
-  const source = vscode.Uri.file(path.join(__dirname, '..', 'assets', 'agent-pulse-cline-plugin.ts'));
+  const destination = vscode.Uri.joinPath(folder.uri, '.cline', 'plugins', 'agent-runtime-lens.ts');
+  const source = vscode.Uri.file(path.join(__dirname, '..', 'assets', 'agent-runtime-lens-cline-plugin.ts'));
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, '.cline', 'plugins'));
   await vscode.workspace.fs.copy(source, destination, { overwrite: true });
   vscode.window.showInformationMessage('Cline deep visibility enabled for this workspace. Start a new Cline session so it loads the observer plugin.');
@@ -289,7 +289,7 @@ function activate(context) {
   clineApiAdapter = createClineApiAdapter(vscode, observation => { liveCline = observation; });
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.name = 'Agent Runtime Lens';
-  statusItem.command = 'agentPulse.showStatus';
+  statusItem.command = 'agentRuntimeLens.showStatus';
   rescueItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 94);
   rescueItem.name = 'Agent Runtime Lens Reload Window Rescue';
   rescueItem.text = '$(debug-restart)';
@@ -299,17 +299,17 @@ function activate(context) {
   for (const [index, kind] of ['environment', 'cpu', 'memory', 'disk', 'network'].entries()) {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99 - index);
     item.name = `Agent Runtime Lens ${kind}`;
-    item.command = 'agentPulse.openDashboard';
+    item.command = 'agentRuntimeLens.openDashboard';
     resourceItems[kind] = item;
   }
   context.subscriptions.push(statusItem, rescueItem, ...Object.values(resourceItems), clineApiAdapter,
-    vscode.commands.registerCommand('agentPulse.showStatus', showStatus),
-    vscode.commands.registerCommand('agentPulse.runDiagnosis', showStatus),
-    vscode.commands.registerCommand('agentPulse.openDashboard', openDashboard),
-    vscode.commands.registerCommand('agentPulse.enableClineIntegration', enableClineIntegration),
-    vscode.commands.registerCommand('agentPulse.exportDiagnostics', exportDiagnostics),
-    vscode.commands.registerCommand('agentPulse.refresh', refresh),
-    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('agentPulse')) schedule(); })
+    vscode.commands.registerCommand('agentRuntimeLens.showStatus', showStatus),
+    vscode.commands.registerCommand('agentRuntimeLens.runDiagnosis', showStatus),
+    vscode.commands.registerCommand('agentRuntimeLens.openDashboard', openDashboard),
+    vscode.commands.registerCommand('agentRuntimeLens.enableClineIntegration', enableClineIntegration),
+    vscode.commands.registerCommand('agentRuntimeLens.exportDiagnostics', exportDiagnostics),
+    vscode.commands.registerCommand('agentRuntimeLens.refresh', refresh),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('agentRuntimeLens')) schedule(); })
   );
   schedule();
 }
@@ -317,8 +317,8 @@ function activate(context) {
 function schedule() {
   if (timer) clearInterval(timer);
   refresh();
-  const seconds = vscode.workspace.getConfiguration('agentPulse').get('refreshIntervalSeconds', 3);
-  if (vscode.workspace.getConfiguration('agentPulse').get('showReloadButton', true)) rescueItem?.show(); else rescueItem?.hide();
+  const seconds = vscode.workspace.getConfiguration('agentRuntimeLens').get('refreshIntervalSeconds', 3);
+  if (vscode.workspace.getConfiguration('agentRuntimeLens').get('showReloadButton', true)) rescueItem?.show(); else rescueItem?.hide();
   timer = setInterval(refresh, seconds * 1000);
 }
 
