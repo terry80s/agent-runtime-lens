@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, cgroupMetrics, readClineDatabase, currentClineLifecycle, selectMostConstrainedDisk } = require('../src/detectors');
+const { clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, cgroupMetrics, readClineDatabase, currentClineLifecycle, selectMostConstrainedDisk, sampleHost } = require('../src/detectors');
 const { phaseFromClineEvent, createClineApiAdapter } = require('../src/cline-api');
 
 test('healthy host is green', () => {
@@ -295,6 +295,14 @@ test('multi-root disk selection chooses the most constrained filesystem', () => 
   assert.equal(result.diskPath, root);
   assert.ok(result.diskTotalBytes > 0);
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('empty VS Code windows fall back to a real filesystem for disk metrics', async () => {
+  const result = await sampleHost([]);
+  assert.ok(result.diskTotalBytes > 0);
+  assert.ok(result.diskFreeBytes >= 0);
+  assert.ok(Number.isFinite(result.diskFreePercent));
+  assert.equal(typeof result.diskPath, 'string');
 });
 
 test('Cline 4 session database is read without selecting prompt content', () => {

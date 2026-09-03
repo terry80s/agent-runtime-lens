@@ -363,7 +363,9 @@ async function sampleHost(workspacePath = os.homedir()) {
   const total = container?.totalMemoryBytes || hostTotal;
   const free = container?.freeMemoryBytes ?? os.freemem();
   const memoryPercent = container?.memoryPercent ?? (total ? Math.round(100 * (1 - free / total)) : 0);
-  const targets = Array.isArray(workspacePath) && workspacePath.length ? workspacePath : [workspacePath || os.homedir()];
+  const targets = Array.isArray(workspacePath)
+    ? (workspacePath.length ? workspacePath : [os.homedir()])
+    : [workspacePath || os.homedir()];
   const disk = selectMostConstrainedDisk(targets);
   return { hostname: os.hostname(), platform: `${os.platform()} ${os.release()}`, resourceScope: container?.resourceScope || 'host', allocatedCpuCores: container?.allocatedCpuCores, cpuPercent: container?.cpuPercent ?? cpuPercent(), memoryPercent, totalMemoryBytes: total, freeMemoryBytes: free, ...disk, ...(await networkProbe()), sampledAt: Date.now() };
 }
