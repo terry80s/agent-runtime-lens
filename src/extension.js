@@ -4,7 +4,7 @@ const vscode = require('vscode');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusText, redact } = require('./core');
+const { hostHealth, formatCapacity, fixedSlot, formatLatency, median, trend, dataFreshness, evidenceQuality, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, agentStatusText, redact } = require('./core');
 const { detectAgents, sampleHost, sampleWindowsPeerFromWsl } = require('./detectors');
 const { createClineApiAdapter } = require('./cline-api');
 
@@ -21,14 +21,6 @@ let liveCline;
 let clineApiAdapter;
 let refreshing = false;
 const networkSamples = [];
-const displayColors = {};
-
-const colors = {
-  red: new vscode.ThemeColor('statusBarItem.errorBackground'),
-  yellow: new vscode.ThemeColor('statusBarItem.warningBackground'),
-  blue: new vscode.ThemeColor('statusBarItem.prominentBackground')
-};
-const foregroundColors = Object.fromEntries(['green', 'blue', 'yellow', 'red', 'gray'].map(name => [name, new vscode.ThemeColor(`agentRuntimeLens.status.${name}`)]));
 
 function duration(ms) {
   const seconds = Math.max(0, Math.round(ms / 1000));
@@ -40,11 +32,9 @@ function diagnosis(primary, health) {
   if (primary.unsupportedTelemetry) return `${primary.name} is installed, but its private session telemetry is not available to Marketplace extensions.`;
   if (primary.visibilityLimited) return `${primary.name} is installed, but it exposes no live task evidence to this extension host.`;
   if (primary.color === 'blue') return `${primary.name} is waiting for your approval or input.`;
-  if (primary.color === 'red' && health.color === 'red') return `${primary.name} reported a failure while the execution environment is unhealthy.`;
   if (primary.color === 'red') return `${primary.name} reported an explicit failure or its verified process exited.`;
   if (primary.phase === 'undisclosed' || primary.phase === 'working') return `${primary.name} reports that it is running, but does not expose its current operation. No slowdown or stall is inferred.`;
-  if (health.color !== 'green') return `${primary.name} is progressing, but host pressure may slow the next operation.`;
-  return `${primary.name} is progressing normally. The host and network checks are healthy.`;
+  return `${primary.name} is progressing. Resource readings are shown as measured facts.`;
 }
 
 function escapeHtml(value) {
@@ -68,17 +58,19 @@ function recentMetric(key, count = 5) {
 function metricSummary(host) {
   if (!host || host.unavailable) return 'Unavailable';
   const used = host.totalMemoryBytes != null && host.freeMemoryBytes != null ? formatCapacity(host.totalMemoryBytes - host.freeMemoryBytes) : '—';
-  return `CPU ${host.cpuPercent ?? '—'}% · MEM ${used}/${formatCapacity(host.totalMemoryBytes) || '—'} · DISK ${formatCapacity(host.diskFreeBytes) || '—'} free · NET ${host.networkLatencyMs ?? '—'}ms`;
+  const disk = host.diskLimitBytes ? `${formatCapacity(host.diskLimitBytes)} limit` : `${formatCapacity(host.diskFreeBytes) || '—'} FS free`;
+  const network = Number.isFinite(host.networkLatencyMs) ? `${host.networkLatencyMs}ms` : '—';
+  return `CPU ${host.cpuPercent ?? '—'}% · MEM ${used}/${formatCapacity(host.totalMemoryBytes) || '—'} · DISK ${disk} · NET ${network}`;
 }
 
-function hostCard(host, title, health = hostHealth(host)) {
+function hostCard(host, title) {
   if (!host || host.unavailable) return `<section class="card"><h2><span class="dot gray"></span>${escapeHtml(title)}</h2><p>Unavailable from this extension host.</p></section>`;
   const used = host.totalMemoryBytes != null && host.freeMemoryBytes != null ? formatCapacity(host.totalMemoryBytes - host.freeMemoryBytes) : undefined;
   const total = formatCapacity(host.totalMemoryBytes);
   const diskFree = formatCapacity(host.diskFreeBytes);
   const diskTotal = formatCapacity(host.diskTotalBytes);
-  const label = health.color === 'red' ? 'Critical' : health.color === 'yellow' ? 'Pressure' : 'Healthy';
-  return `<section class="card"><h2><span class="dot ${health.color}"></span>${escapeHtml(title)} · ${label}</h2><div class="metrics"><div class="metric">CPU<br><b>${host.cpuPercent ?? '?'}%</b></div><div class="metric">Memory used<br><b>${used && total ? `${used}/${total}` : 'Unavailable'}</b></div><div class="metric">Disk free<br><b>${diskFree ? `${diskFree}${diskTotal ? ` of ${diskTotal}` : ''}` : 'Unavailable'}</b></div><div class="metric">Network<br><b>${host.networkLatencyMs ?? '?'}ms</b></div></div><p>${escapeHtml(health.reasons.length ? health.reasons.join(' · ') : 'No resource pressure detected')}</p></section>`;
+  const diskLimit = formatCapacity(host.diskLimitBytes);
+  return `<section class="card"><h2><span class="dot gray"></span>${escapeHtml(title)}</h2><div class="metrics"><div class="metric">CPU<br><b>${host.cpuPercent ?? '?'}%</b></div><div class="metric">Memory used<br><b>${used && total ? `${used}/${total}` : 'Unavailable'}</b></div><div class="metric">${diskLimit ? 'Pod storage limit' : 'Filesystem free'}<br><b>${diskLimit || (diskFree ? `${diskFree}${diskTotal ? ` of ${diskTotal}` : ''}` : 'Unavailable')}</b></div><div class="metric">Network probe<br><b>${host.networkLatencyMs ?? '—'}${host.networkLatencyMs != null ? 'ms' : ''}</b></div></div><p>Measured at ${escapeHtml(title)}.</p></section>`;
 }
 
 function renderDashboard() {
@@ -87,7 +79,8 @@ function renderDashboard() {
   const recent = timeline.slice(-60);
   const rows = [...recent].reverse().map(point => {
     const agent = choosePrimary(point.agents);
-    return `<tr><td>${new Date(point.sampledAt).toLocaleTimeString()}</td><td><span class="dot ${agent?.color || 'gray'}"></span>${escapeHtml(agent ? `${agent.name}: ${agent.label}` : 'No agent')}</td><td><span class="badge">${escapeHtml(evidenceLabel(agent))}</span></td><td>${escapeHtml(agent?.evidence || '—')}</td><td>${point.host.cpuPercent ?? '?'}%</td><td>${point.host.memoryPercent ?? '?'}%</td><td>${point.host.diskFreePercent ?? '?'}%</td><td>${escapeHtml(point.host.network || 'unknown')} ${point.host.networkLatencyMs ?? '?'}ms</td></tr>`;
+    const network = Number.isFinite(point.host.networkLatencyMs) ? `${point.host.networkLatencyMs}ms` : '—';
+    return `<tr><td>${new Date(point.sampledAt).toLocaleTimeString()}</td><td><span class="dot ${agent?.color || 'gray'}"></span>${escapeHtml(agent ? `${agent.name}: ${agent.label}` : 'No agent')}</td><td><span class="badge">${escapeHtml(evidenceLabel(agent))}</span></td><td>${escapeHtml(agent?.evidence || '—')}</td><td>${point.host.cpuPercent ?? '?'}%</td><td>${point.host.memoryPercent ?? '?'}%</td><td>${point.host.diskFreePercent ?? '?'}%</td><td>${escapeHtml(point.host.network || 'unknown')} ${network}</td></tr>`;
   }).join('');
   const segments = recent.reduce((result, point) => {
     const agent = choosePrimary(point.agents);
@@ -105,13 +98,11 @@ function renderDashboard() {
   }).join('') || '<p>No meaningful Agent transitions recorded in this window.</p>';
   const agents = snapshot.agents.map(agent => `<section class="card"><h2><span class="dot ${agent.color}"></span>${escapeHtml(agent.name)} <span class="badge">${escapeHtml(evidenceLabel(agent))}</span></h2><div class="state">${escapeHtml(agent.label)}</div><p>${escapeHtml(agent.evidence || 'No evidence')}</p></section>`).join('') || '<section class="card"><h2>No active agent</h2><p>Cline and Claude Code history locations are monitored read-only.</p></section>';
   const currentTitle = environmentKind(snapshot.remoteName, snapshot.host.resourceScope).title;
-  const peerCard = snapshot.peerHost ? hostCard(snapshot.peerHost, 'Windows host', snapshot.peerHealth) : '';
-  const attention = primary?.color === 'red' || primary?.color === 'blue' || snapshot.health.color !== 'green';
-  const visibilityLimited = primary?.unsupportedTelemetry || primary?.visibilityLimited || primary?.color === 'gray';
-  const incident = attention ? `<section class="incident ${primary?.color === 'red' || snapshot.health.color === 'red' ? 'incident-red' : 'incident-warn'}"><b>Needs attention</b><div>${escapeHtml(diagnosis(primary, snapshot.health))}</div></section>` : visibilityLimited ? `<section class="quiet"><b>Environment clear · Agent visibility limited</b><div>${escapeHtml(diagnosis(primary, snapshot.health))}</div></section>` : '<section class="quiet"><b>All clear</b> · Agent and resource evidence show no current issue.</section>';
+  const peerCard = snapshot.peerHost ? hostCard(snapshot.peerHost, 'Windows host') : '';
+  const incident = `<section class="quiet"><b>Current observation</b><div>${escapeHtml(diagnosis(primary, snapshot.health))}</div></section>`;
   const quality = evidenceQuality(primary?.evidenceSource);
   const nonce = crypto.randomBytes(16).toString('base64');
-  dashboard.webview.html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:20px;max-width:1300px;margin:auto}.titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:8px}.actions button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:5px 10px;cursor:pointer}.actions button:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:2px}.hero{font-size:18px;padding:14px;border-left:4px solid var(--vscode-focusBorder);background:var(--vscode-editor-inactiveSelectionBackground)}.incident,.quiet{padding:12px 14px;margin:12px 0}.incident{border-left:4px solid var(--vscode-editorWarning-foreground);background:var(--vscode-inputValidation-warningBackground)}.incident-red{border-color:var(--vscode-editorError-foreground);background:var(--vscode-inputValidation-errorBackground)}.quiet{border:1px solid var(--vscode-widget-border);color:var(--vscode-descriptionForeground)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:16px 0}.card{border:1px solid var(--vscode-widget-border);padding:14px;background:var(--vscode-editor-background)}h1,h2{margin-top:0}.state{font-size:24px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.metric{padding:10px;background:var(--vscode-textBlockQuote-background)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--vscode-widget-border)}details{margin-top:22px}.badge{font-size:11px;border:1px solid var(--vscode-widget-border);border-radius:9px;padding:1px 7px;color:var(--vscode-descriptionForeground);font-weight:normal}.trust{color:var(--vscode-descriptionForeground);margin-top:-8px}.flights{border:1px solid var(--vscode-widget-border);background:var(--vscode-editor-background)}.flight{display:grid;grid-template-columns:5px 1fr;gap:12px;padding:12px 14px;border-bottom:1px solid var(--vscode-widget-border)}.flight:last-child{border-bottom:0}.rail{border-radius:3px}.flight-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:7px}.flight-head span{color:var(--vscode-descriptionForeground)}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.green{background:var(--vscode-testing-iconPassed)}.blue{background:var(--vscode-charts-blue)}.yellow{background:var(--vscode-editorWarning-foreground)}.red{background:var(--vscode-editorError-foreground)}.gray{background:var(--vscode-descriptionForeground)}</style></head><body><div class="titlebar"><h1>Agent Runtime Lens</h1><div class="actions"><button aria-label="Export redacted diagnostics" data-action="export">Export</button><button aria-label="Reload VS Code Window" data-action="reload">Reload Window</button></div></div><div class="hero">${escapeHtml(diagnosis(primary, snapshot.health))}</div>${incident}<p class="trust">Evidence: ${escapeHtml(quality.label)} · trust ${quality.level}/4 · data ${escapeHtml(snapshot.freshness)}</p><div class="grid">${agents}${hostCard(snapshot.host, currentTitle, snapshot.health)}${peerCard}</div><h2>Agent Flight Recorder</h2><div class="flights">${flights}</div><details ${rawTimelineOpen ? 'open' : ''}><summary>Raw evidence timeline</summary><table><thead><tr><th>Time</th><th>Agent state</th><th>Source</th><th>Evidence</th><th>CPU</th><th>Memory</th><th>Disk free</th><th>Network</th></tr></thead><tbody>${rows}</tbody></table></details><script nonce="${nonce}">const vscode=acquireVsCodeApi();scrollTo(0,${Math.max(0, Math.round(dashboardScrollY))});document.querySelector('details').addEventListener('toggle',e=>vscode.postMessage({type:'rawOpen',value:e.target.open}));document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>vscode.postMessage({type:'action',value:button.dataset.action})));let pending;addEventListener('scroll',()=>{clearTimeout(pending);pending=setTimeout(()=>vscode.postMessage({type:'scroll',value:scrollY}),100)});</script></body></html>`;
+  dashboard.webview.html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:20px;max-width:1300px;margin:auto}.titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:8px}.actions button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:5px 10px;cursor:pointer}.actions button:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:2px}.hero{font-size:18px;padding:14px;border-left:4px solid var(--vscode-focusBorder);background:var(--vscode-editor-inactiveSelectionBackground)}.incident,.quiet{padding:12px 14px;margin:12px 0}.incident{border:1px solid var(--vscode-widget-border);background:var(--vscode-editor-background)}.incident-red{border-color:var(--vscode-widget-border);background:var(--vscode-editor-background)}.quiet{border:1px solid var(--vscode-widget-border);color:var(--vscode-descriptionForeground)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:16px 0}.card{border:1px solid var(--vscode-widget-border);padding:14px;background:var(--vscode-editor-background)}h1,h2{margin-top:0}.state{font-size:24px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.metric{padding:10px;background:var(--vscode-textBlockQuote-background)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--vscode-widget-border)}details{margin-top:22px}.badge{font-size:11px;border:1px solid var(--vscode-widget-border);border-radius:9px;padding:1px 7px;color:var(--vscode-descriptionForeground);font-weight:normal}.trust{color:var(--vscode-descriptionForeground);margin-top:-8px}.flights{border:1px solid var(--vscode-widget-border);background:var(--vscode-editor-background)}.flight{display:grid;grid-template-columns:5px 1fr;gap:12px;padding:12px 14px;border-bottom:1px solid var(--vscode-widget-border)}.flight:last-child{border-bottom:0}.rail{border-radius:3px}.flight-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:7px}.flight-head span{color:var(--vscode-descriptionForeground)}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.green,.blue,.yellow,.red,.gray{background:var(--vscode-descriptionForeground)}</style></head><body><div class="titlebar"><h1>Agent Runtime Lens</h1><div class="actions"><button aria-label="Export redacted diagnostics" data-action="export">Export</button><button aria-label="Reload VS Code Window" data-action="reload">Reload Window</button></div></div><div class="hero">${escapeHtml(diagnosis(primary, snapshot.health))}</div>${incident}<p class="trust">Evidence: ${escapeHtml(quality.label)} · trust ${quality.level}/4 · data ${escapeHtml(snapshot.freshness)}</p><div class="grid">${agents}${hostCard(snapshot.host, currentTitle, snapshot.health)}${peerCard}</div><h2>Agent Flight Recorder</h2><div class="flights">${flights}</div><details ${rawTimelineOpen ? 'open' : ''}><summary>Raw evidence timeline</summary><table><thead><tr><th>Time</th><th>Agent state</th><th>Source</th><th>Evidence</th><th>CPU</th><th>Memory</th><th>Disk free</th><th>Network</th></tr></thead><tbody>${rows}</tbody></table></details><script nonce="${nonce}">const vscode=acquireVsCodeApi();scrollTo(0,${Math.max(0, Math.round(dashboardScrollY))});document.querySelector('details').addEventListener('toggle',e=>vscode.postMessage({type:'rawOpen',value:e.target.open}));document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>vscode.postMessage({type:'action',value:button.dataset.action})));let pending;addEventListener('scroll',()=>{clearTimeout(pending);pending=setTimeout(()=>vscode.postMessage({type:'scroll',value:scrollY}),100)});</script></body></html>`;
 }
 
 function openDashboard() {
@@ -131,13 +122,10 @@ function openDashboard() {
 
 function updateStatus() {
   const primary = choosePrimary(snapshot.agents);
-  const agentColor = primary?.state === 'idle' ? 'green' : primary?.color || 'gray';
-  const dominant = dominantColor(snapshot.health.color, agentColor);
   const mode = vscode.workspace.getConfiguration('agentRuntimeLens').get('statusBarMode', 'text');
   statusItem.text = agentStatusText(primary, mode);
-  statusItem.color = dominant === 'green' ? undefined : foregroundColors[dominant];
-  statusItem.backgroundColor = dominant === 'red' || dominant === 'yellow' ? colors[dominant] : undefined;
-  const healthLabel = snapshot.health.color === 'red' ? 'Critical' : snapshot.health.color === 'yellow' ? 'Pressure' : 'Healthy';
+  statusItem.color = undefined;
+  statusItem.backgroundColor = undefined;
   const environment = environmentKind(snapshot.remoteName, snapshot.host.resourceScope);
   const scope = environment.title;
   const agentRows = snapshot.agents.length
@@ -148,11 +136,10 @@ function updateStatus() {
   const networkTrend = trendLabel(trend(recentMetric('networkLatencyMs'), 25));
   const peerLine = snapshot.peerHost ? `\n| Windows host | ${metricSummary(snapshot.peerHost)} |` : '';
   statusItem.tooltip = new vscode.MarkdownString(`**Agent Runtime Lens** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n${agentRows}\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
-  statusItem.accessibilityInformation = { label: `Agent Runtime Lens. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Environment ${snapshot.health.color}.` };
+  statusItem.accessibilityInformation = { label: `Agent Runtime Lens. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Resource facts available in the status bar.` };
   statusItem.show();
-  const peerColor = snapshot.peerHost?.unavailable ? 'gray' : snapshot.peerHealth?.color || 'green';
   resourceItems.environment.text = `$(${environment.icon})`;
-  resourceItems.environment.color = peerColor === 'green' ? undefined : foregroundColors[peerColor];
+  resourceItems.environment.color = undefined;
   resourceItems.environment.tooltip = snapshot.remoteName === 'wsl' ? 'Metrics shown: WSL execution environment\nWindows host is also sampled and shown in the dashboard.' : `Metrics shown: ${environment.title}`;
   resourceItems.environment.accessibilityInformation = { label: `Execution environment ${environment.title}` };
   resourceItems.environment.show();
@@ -161,19 +148,17 @@ function updateStatus() {
   const memoryUsed = formatCapacity(memoryUsedBytes);
   const diskTotal = formatCapacity(snapshot.host.diskTotalBytes);
   const diskFree = formatCapacity(snapshot.host.diskFreeBytes);
+  const diskLimit = formatCapacity(snapshot.host.diskLimitBytes);
   const resources = {
     cpu: { available: Number.isFinite(snapshot.host.cpuPercent), icon: '$(pulse)', text: `$(pulse) ${fixedSlot(`${snapshot.host.cpuPercent}%`, 4)}`, value: snapshot.host.cpuPercent, tooltip: `CPU usage · ${snapshot.host.cpuPercent}%\nCapacity · ${snapshot.host.allocatedCpuCores ? `${snapshot.host.allocatedCpuCores} allocated cores` : scope}` },
     memory: { available: Boolean(memoryUsed && memoryTotal), icon: '$(server-process)', text: `$(server-process) ${fixedSlot(`${memoryUsed}/${memoryTotal}`, 11)}`, value: snapshot.host.memoryPercent, tooltip: `Memory used · ${memoryUsed}\nMemory available · ${formatCapacity(snapshot.host.freeMemoryBytes) || 'unavailable'}\nMemory total · ${memoryTotal || 'unavailable'}\nUsage · ${snapshot.host.memoryPercent ?? 'unavailable'}%\nScope · ${scope}` },
-    disk: { available: Boolean(diskFree && diskTotal), icon: '$(database)', text: `$(database) ${fixedSlot(`${diskFree} free`, 9)}`, value: snapshot.host.diskFreePercent, tooltip: `Disk free · ${diskFree || 'unavailable'}\nDisk used · ${formatCapacity(snapshot.host.diskTotalBytes - snapshot.host.diskFreeBytes) || 'unavailable'}\nDisk total · ${diskTotal || 'unavailable'}\nFree · ${snapshot.host.diskFreePercent ?? 'unavailable'}%\nScope · Workspace filesystem` },
-    network: { available: Number.isFinite(snapshot.host.networkLatencyMs) && snapshot.host.networkLatencyMs >= 0 && snapshot.host.network !== 'unknown', icon: '$(radio-tower)', text: snapshot.host.network === 'offline' ? '$(radio-tower)     ×' : `$(radio-tower) ${formatLatency(snapshot.host.networkLatencyMs)}`, value: snapshot.host.networkLatencyMs, tooltip: `DNS reachability · ${snapshot.host.network || 'unknown'}\nStable DNS lookup · ${snapshot.host.networkLatencyMs ?? 'unavailable'}ms\nLatest raw lookup · ${snapshot.host.networkRawLatencyMs ?? 'unavailable'}ms\nThis is not full LLM request latency.\nRemote · ${snapshot.remoteName || 'local'}` }
+    disk: { available: Boolean(diskLimit || (diskFree && diskTotal)), icon: '$(database)', text: `$(database) ${fixedSlot(diskLimit ? `${diskLimit} limit` : `${diskFree} free`, 9)}`, value: snapshot.host.diskFreePercent, tooltip: diskLimit ? `Pod ephemeral-storage limit · ${diskLimit}\nWorkspace filesystem free · ${diskFree || 'unavailable'} of ${diskTotal || 'unavailable'}\nKubernetes does not expose total Pod ephemeral usage through cgroups.\nScope · Pod allocation metadata` : `Workspace filesystem free · ${diskFree || 'unavailable'}\nFilesystem used · ${formatCapacity(snapshot.host.diskTotalBytes - snapshot.host.diskFreeBytes) || 'unavailable'}\nFilesystem total · ${diskTotal || 'unavailable'}\nFree · ${snapshot.host.diskFreePercent ?? 'unavailable'}%\nPod ephemeral-storage limit · not exposed to this process\nScope · Workspace filesystem` },
+    network: { available: Number.isFinite(snapshot.host.networkLatencyMs) && snapshot.host.networkLatencyMs >= 0 && snapshot.host.network === 'online', icon: '$(radio-tower)', text: `$(radio-tower) ${formatLatency(snapshot.host.networkLatencyMs)}`, value: snapshot.host.networkLatencyMs, tooltip: `DNS probe · resolved ${snapshot.host.networkProbeHost || 'configured endpoint'}\nStable lookup · ${snapshot.host.networkLatencyMs ?? 'unavailable'}ms\nLatest raw lookup · ${snapshot.host.networkRawLatencyMs ?? 'unavailable'}ms\nThis is not full network or LLM request latency.\nExtension host · ${snapshot.remoteName || 'local'}`, unavailableTooltip: `DNS probe unavailable for the tested public endpoints.\nThe network may still be available through internal DNS, proxies, or private endpoints.\nNo offline state is inferred.\nExtension host · ${snapshot.remoteName || 'local'}` }
   };
   for (const [kind, data] of Object.entries(resources)) {
-    const observedColor = data.available && snapshot.freshness === 'fresh' ? metricStatus(kind, data.value, snapshot.host) : 'gray';
-    displayColors[kind] = stabilizeColor(displayColors[kind], observedColor);
-    const color = displayColors[kind].color;
     resourceItems[kind].text = data.available ? data.text : `${data.icon}$(circle-slash)`;
-    resourceItems[kind].color = color === 'green' ? undefined : foregroundColors[color];
-    resourceItems[kind].tooltip = `${data.available ? data.tooltip : `${kind[0].toUpperCase()}${kind.slice(1)} metric unavailable`}\n\nClick for Agent Runtime Lens dashboard.`;
+    resourceItems[kind].color = undefined;
+    resourceItems[kind].tooltip = `${data.available ? data.tooltip : data.unavailableTooltip || `${kind[0].toUpperCase()}${kind.slice(1)} metric unavailable`}\n\nClick for Agent Runtime Lens dashboard.`;
     resourceItems[kind].accessibilityInformation = { label: `Agent Runtime Lens ${kind}: ${data.available ? data.tooltip.replace(/\n/g, ', ') : 'unavailable'}` };
     if (mode === 'minimal') resourceItems[kind].hide(); else resourceItems[kind].show();
   }
@@ -190,6 +175,8 @@ async function refreshOnce() {
       networkSamples.push(host.networkLatencyMs);
       if (networkSamples.length > 5) networkSamples.shift();
       host.networkLatencyMs = median(networkSamples);
+    } else {
+      networkSamples.length = 0;
     }
     await clineApiAdapter?.connect();
     const persistedCline = observations.find(item => item.id === 'cline');
@@ -205,17 +192,11 @@ async function refreshOnce() {
     if (copilotExtension) {
       observations.push({ id: 'copilot', name: 'GitHub Copilot', phase: 'idle', active: false, processAlive: true, lastActivityAt: Date.now(), evidence: 'Copilot is installed; its session lifecycle uses private proposed APIs that are unavailable to Marketplace extensions', evidenceSource: 'inferred', confidence: 'observed', unsupportedTelemetry: true });
     }
-    const inactiveCline = observations.find(item => item.id === 'cline' && !item.active);
-    if (inactiveCline && inactiveCline.confidence !== 'verified' && vscode.extensions.getExtension('saoudrizwan.claude-dev')) {
-      inactiveCline.visibilityLimited = true;
-      inactiveCline.evidence = 'Cline is installed, but its persisted task evidence is not updating';
-    }
     const agents = observations.map(item => classifyAgent(item, Date.now(), slowMs));
     const clineExtension = vscode.extensions.getExtension('saoudrizwan.claude-dev');
     const sampledAt = Date.now();
     const observedHealth = hostHealth(host);
-    displayColors.host = stabilizeColor(displayColors.host, observedHealth.color);
-    const health = { ...observedHealth, color: displayColors.host.color, reasons: displayColors.host.color !== observedHealth.color ? ['Resource readings are recovering; waiting for stability'] : observedHealth.reasons };
+    const health = observedHealth;
     snapshot = { agents, host, peerHost, health, peerHealth: peerHost && !peerHost.unavailable ? hostHealth(peerHost) : undefined, sampledAt, freshness: dataFreshness(host.sampledAt, sampledAt, Math.max(15000, config.get('refreshIntervalSeconds', 3) * 4000)), remoteName: vscode.env.remoteName || null, integrations: { clineVersion: clineExtension?.packageJSON?.version, clineApi: clineApiAdapter?.connected ? 'connected' : 'not exposed', clineApiShape: clineApiAdapter?.apiShape || [] } };
     const currentAgent = choosePrimary(snapshot.agents);
     const previous = timeline.at(-1);
@@ -227,12 +208,13 @@ async function refreshOnce() {
     updateStatus();
     renderDashboard();
   } catch (error) {
-    statusItem.text = '$(error) Agent Runtime Lens unavailable';
-    statusItem.backgroundColor = colors.red;
+    statusItem.text = '$(circle-slash) Agent Runtime Lens unavailable';
+    statusItem.color = undefined;
+    statusItem.backgroundColor = undefined;
     statusItem.tooltip = `Agent Runtime Lens sampling failed: ${error?.message || 'unknown error'}`;
     for (const [kind, item] of Object.entries(resourceItems)) {
       item.text = kind === 'environment' ? '$(remote) UNKNOWN$(circle-slash)' : '$(circle-slash)';
-      item.color = foregroundColors.gray;
+      item.color = undefined;
       item.tooltip = 'Metric unavailable because the latest sampling cycle failed.';
       item.show();
     }
@@ -250,11 +232,11 @@ async function showStatus() {
   const primary = choosePrimary(snapshot.agents);
   const items = [{ label: `$(info) ${diagnosis(primary, snapshot.health)}`, description: 'Current diagnosis' }];
   for (const agent of snapshot.agents) {
-    const icon = agent.color === 'red' ? 'error' : agent.color === 'yellow' ? 'warning' : agent.color === 'blue' ? 'person' : agent.color === 'gray' ? 'circle-slash' : 'circle-filled';
+    const icon = agentStatusIcon(agent);
     items.push({ label: `$(${icon}) ${agent.name}: ${agent.label}`, description: `${evidenceLabel(agent)} · ${agent.evidence || 'No evidence description'}` });
   }
-  const healthLabel = snapshot.health.color === 'red' ? 'Critical' : snapshot.health.color === 'yellow' ? 'Pressure' : 'Healthy';
-  items.push({ label: `$(pulse) Environment: ${healthLabel}`, description: `CPU ${snapshot.host.cpuPercent ?? '?'}% · Memory ${snapshot.host.memoryPercent ?? '?'}% · Disk free ${snapshot.host.diskFreePercent ?? '?'}% · Network ${snapshot.host.network ?? 'unknown'} ${snapshot.host.networkLatencyMs ?? '?'}ms` });
+  const network = Number.isFinite(snapshot.host.networkLatencyMs) ? `${snapshot.host.networkLatencyMs}ms` : '—';
+  items.push({ label: '$(pulse) Environment readings', description: `CPU ${snapshot.host.cpuPercent ?? '?'}% · Memory ${snapshot.host.memoryPercent ?? '?'}% · Disk free ${snapshot.host.diskFreePercent ?? '?'}% · Network probe ${snapshot.host.network ?? 'unknown'} ${network}` });
   items.push({ label: `$(plug) Cline live API: ${snapshot.integrations?.clineApi || 'checking'}`, description: snapshot.integrations?.clineApiShape?.length ? `Exported keys: ${snapshot.integrations.clineApiShape.join(', ')}` : 'This Cline cohort has not exposed a subscribable event API' });
   items.push({ label: '$(graph) Open timeline dashboard', command: 'agentRuntimeLens.openDashboard' });
   items.push({ label: '$(export) Export redacted diagnostics', command: 'agentRuntimeLens.exportDiagnostics' });

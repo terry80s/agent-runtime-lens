@@ -144,7 +144,7 @@ function classifyAgent(observation, now = Date.now(), slowThresholdMs = 45000, f
   if (observation.cancelled || observation.phase === 'cancelled') return { ...observation, state: STATES.CANCELLED, color: 'gray', label: 'Cancelled', age };
   if (observation.phase === 'waiting_input') return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for your input', shortLabel: 'Waiting', age };
   if (observation.needsApproval) return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for approval', shortLabel: 'Waiting', age };
-  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Limited visibility', shortLabel: 'Limited', age };
+  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Activity unavailable', shortLabel: '—', age };
   if (observation.phase === 'completed' && age < 10 * 60_000) return { ...observation, state: STATES.COMPLETED, color: 'green', label: 'Done', age };
   if (!observation.active) return { ...observation, state: STATES.IDLE, color: 'gray', label: 'Idle', age };
   if (observation.processAlive === false && observation.processEvidenceVerified && observation.active) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Process exited', shortLabel: 'Exited', age };

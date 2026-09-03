@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, cgroupMetrics, readClineDatabase, currentClineLifecycle, selectMostConstrainedDisk, sampleHost } = require('../src/detectors');
+const { clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, clineStorageRoots, parseKubernetesBytes, cgroupMetrics, probeDnsTargets, readClineDatabase, currentClineLifecycle, selectMostConstrainedDisk, sampleHost } = require('../src/detectors');
 const { phaseFromClineEvent, createClineApiAdapter } = require('../src/cline-api');
 
 test('healthy host is green', () => {
@@ -114,6 +114,13 @@ test('remote environments never masquerade as local', () => {
   assert.deepEqual(environmentKind('codespaces', 'host'), { short: 'REMOTE', title: 'Remote environment (codespaces)', icon: 'cloud', remote: true });
 });
 
+test('Marketplace manifest and status implementation use only default VS Code foreground colors', () => {
+  const manifest = require('../package.json');
+  const extensionSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'extension.js'), 'utf8');
+  assert.equal(manifest.contributes.colors, undefined);
+  assert.doesNotMatch(extensionSource, /statusBarItem\.(?:error|warning|prominent)Background|foregroundColors/);
+});
+
 test('approval is blue and outranks inactivity', () => {
   const result = classifyAgent({ name: 'Cline', active: true, needsApproval: true, processAlive: true, lastActivityAt: 0 }, 1_000_000, 1000);
   assert.equal(result.color, 'blue');
@@ -199,10 +206,11 @@ test('verified process exit remains a failure', () => {
   assert.equal(result.color, 'red');
 });
 
-test('installed agent without live evidence reports limited visibility', () => {
+test('installed agent without live evidence reports unavailable rather than an ambiguous limited state', () => {
   const result = classifyAgent({ name: 'Cline', active: false, visibilityLimited: true, lastActivityAt: 0 }, 4000, 1000);
   assert.equal(result.color, 'gray');
-  assert.equal(result.label, 'Limited visibility');
+  assert.equal(result.label, 'Activity unavailable');
+  assert.equal(result.shortLabel, '—');
 });
 
 test('installed Copilot is visible without inventing private activity', () => {
@@ -261,6 +269,12 @@ test('Cline semantic fields map phases without reading message text', () => {
   assert.equal(clinePhaseFromMessage({ type: 'ask', ask: 'followup' }), 'approval');
 });
 
+test('Cline storage discovery includes remote VS Code Server locations', () => {
+  const roots = clineStorageRoots('/home/dev', undefined, '/home/dev/.cline');
+  assert.ok(roots.some(value => value.includes(path.join('.vscode-server', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev'))));
+  assert.ok(roots.some(value => value.includes(path.join('.vscode-server-insiders', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev'))));
+});
+
 test('Cline event file chooses the latest meaningful operation', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-events-'));
   const eventPath = path.join(root, 'messages.json');
@@ -309,6 +323,49 @@ test('cgroup v2 memory is calculated against the container allocation', () => {
   assert.equal(result.allocatedCpuCores, 0.5);
   assert.equal(result.cpuPercent, undefined);
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('nested Kubernetes cgroup v2 membership resolves Pod CPU and memory limits', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-nested-cgroup-'));
+  const relative = path.join('kubepods.slice', 'kubepods-burstable.slice', 'pod12345678', 'container.scope');
+  const nested = path.join(root, relative);
+  fs.mkdirSync(nested, { recursive: true });
+  fs.writeFileSync(path.join(nested, 'memory.current'), '268435456');
+  fs.writeFileSync(path.join(nested, 'memory.max'), '536870912');
+  fs.writeFileSync(path.join(nested, 'cpu.max'), '25000 100000');
+  fs.writeFileSync(path.join(nested, 'cpu.stat'), 'usage_usec 1000000\n');
+  const procFile = path.join(root, 'proc-self-cgroup');
+  fs.writeFileSync(procFile, '0::/kubepods.slice/kubepods-burstable.slice/pod12345678/container.scope\n');
+  const result = cgroupMetrics(1000, root, procFile);
+  assert.equal(result.resourceScope, 'kubernetes-pod');
+  assert.equal(result.totalMemoryBytes, 536870912);
+  assert.equal(result.memoryPercent, 50);
+  assert.equal(result.allocatedCpuCores, 0.25);
+  assert.equal(result.cgroupPath, nested);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('Kubernetes storage quantities are parsed without pretending filesystem free space is the Pod quota', () => {
+  assert.equal(parseKubernetesBytes('2Gi'), 2 * 1024 ** 3);
+  assert.equal(parseKubernetesBytes('500Mi'), 500 * 1024 ** 2);
+  assert.equal(parseKubernetesBytes('1000000000'), 1000000000);
+  assert.equal(parseKubernetesBytes('invalid'), undefined);
+});
+
+test('a failed public DNS probe is unknown, never offline', async () => {
+  const result = await probeDnsTargets(async () => { throw new Error('blocked'); }, ['public.example'], 20);
+  assert.equal(result.network, 'unknown');
+  assert.equal(result.networkLatencyMs, undefined);
+  assert.deepEqual(result.networkProbeTargets, ['public.example']);
+});
+
+test('one reachable DNS target is sufficient to report the measured endpoint', async () => {
+  const result = await probeDnsTargets(async target => {
+    if (target === 'blocked.example') throw new Error('blocked');
+  }, ['blocked.example', 'internal.example'], 20);
+  assert.equal(result.network, 'online');
+  assert.equal(result.networkProbeHost, 'internal.example');
+  assert.ok(Number.isFinite(result.networkLatencyMs));
 });
 
 test('host cgroup with no limits is not mislabeled as a container', () => {

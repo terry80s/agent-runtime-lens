@@ -215,6 +215,17 @@ function currentClineLifecycle(previous, current) {
 
 let previousClineDatabaseSignal;
 let seenCompanionActivityAt;
+function clineStorageRoots(home, appData, clineHome = path.join(home, '.cline')) {
+  return [
+    path.join(clineHome, 'data', 'tasks'),
+    appData && path.join(appData, 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev'),
+    path.join(home, '.config', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev'),
+    path.join(home, '.vscode-server', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev'),
+    path.join(home, '.vscode-server-insiders', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev'),
+    path.join(home, '.vscode-remote', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev')
+  ].filter(Boolean);
+}
+
 async function detectAgents(workspacePaths = []) {
   workspacePaths = Array.isArray(workspacePaths) ? workspacePaths.filter(value => typeof value === 'string' && value.length > 0) : [];
   const home = os.homedir();
@@ -251,11 +262,7 @@ async function detectAgents(workspacePaths = []) {
     previousClineDatabaseSignal = databaseSignal;
   }
   const appData = process.env.APPDATA;
-  const clineRoots = [
-    path.join(clineHome, 'data', 'tasks'),
-    appData && path.join(appData, 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev'),
-    path.join(home, '.config', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev')
-  ].filter(Boolean);
+  const clineRoots = clineStorageRoots(home, appData, clineHome);
   for (const root of databaseSignal ? [] : clineRoots) {
     const latest = latestFile(root, p => /ui_messages\.json$/i.test(p));
     if (latest) {
@@ -299,59 +306,128 @@ function readNumber(file) {
   } catch { return undefined; }
 }
 
-function cgroupMetrics(now = Date.now(), root = '/sys/fs/cgroup') {
-  if (process.platform !== 'linux' && root === '/sys/fs/cgroup') return undefined;
-  const memoryCurrent = readNumber(path.join(root, 'memory.current')) ?? readNumber(path.join(root, 'memory', 'memory.usage_in_bytes'));
-  const memoryMax = readNumber(path.join(root, 'memory.max')) ?? readNumber(path.join(root, 'memory', 'memory.limit_in_bytes'));
-  let quota, period;
+function parseKubernetesBytes(value) {
+  if (value == null || value === '') return undefined;
+  const match = String(value).trim().match(/^(\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti|K|M|G|T)?$/i);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  const unit = (match[2] || '').toLowerCase();
+  const multipliers = { '': 1, k: 1000, m: 1000 ** 2, g: 1000 ** 3, t: 1000 ** 4, ki: 1024, mi: 1024 ** 2, gi: 1024 ** 3, ti: 1024 ** 4 };
+  const bytes = amount * multipliers[unit];
+  return Number.isFinite(bytes) && bytes >= 0 ? Math.round(bytes) : undefined;
+}
+
+function cgroupLocations(root, procCgroupPath) {
+  const locations = {
+    v2: [root],
+    memory: [path.join(root, 'memory')],
+    cpu: [path.join(root, 'cpu'), path.join(root, 'cpu,cpuacct')],
+    cpuacct: [path.join(root, 'cpuacct'), path.join(root, 'cpu,cpuacct')],
+    identity: root,
+    membership: ''
+  };
+  if (!procCgroupPath) return locations;
   try {
-    const parts = fs.readFileSync(path.join(root, 'cpu.max'), 'utf8').trim().split(/\s+/);
-    quota = parts[0] === 'max' ? undefined : Number(parts[0]);
-    period = Number(parts[1]);
-  } catch {
-    quota = readNumber(path.join(root, 'cpu', 'cpu.cfs_quota_us'));
-    period = readNumber(path.join(root, 'cpu', 'cpu.cfs_period_us'));
+    const membership = fs.readFileSync(procCgroupPath, 'utf8');
+    locations.membership = membership;
+    for (const line of membership.split(/\r?\n/).filter(Boolean)) {
+      const [hierarchy, controllers = '', relative = '/'] = line.split(':');
+      const segments = relative.split('/').filter(Boolean);
+      if (hierarchy === '0' && controllers === '') {
+        const resolved = path.join(root, ...segments);
+        locations.v2.unshift(resolved);
+        locations.identity = resolved;
+        continue;
+      }
+      const group = controllers.split(',').filter(Boolean);
+      for (const controller of group) {
+        const candidates = [path.join(root, controllers, ...segments), path.join(root, controller, ...segments)];
+        if (controller === 'memory') locations.memory.unshift(...candidates);
+        if (controller === 'cpu') locations.cpu.unshift(...candidates);
+        if (controller === 'cpuacct') locations.cpuacct.unshift(...candidates);
+      }
+    }
+  } catch { /* proc membership unavailable */ }
+  return locations;
+}
+
+function firstNumber(paths, filename) {
+  for (const directory of paths) {
+    const value = readNumber(path.join(directory, filename));
+    if (value != null) return value;
   }
+  return undefined;
+}
+
+function cgroupMetrics(now = Date.now(), root = '/sys/fs/cgroup', procCgroupPath = root === '/sys/fs/cgroup' ? '/proc/self/cgroup' : undefined) {
+  if (process.platform !== 'linux' && root === '/sys/fs/cgroup') return undefined;
+  const locations = cgroupLocations(root, procCgroupPath);
+  const memoryCurrent = firstNumber(locations.v2, 'memory.current') ?? firstNumber(locations.memory, 'memory.usage_in_bytes');
+  const memoryMax = firstNumber(locations.v2, 'memory.max') ?? firstNumber(locations.memory, 'memory.limit_in_bytes');
+  let quota, period;
+  for (const directory of locations.v2) {
+    try {
+      const parts = fs.readFileSync(path.join(directory, 'cpu.max'), 'utf8').trim().split(/\s+/);
+      quota = parts[0] === 'max' ? undefined : Number(parts[0]);
+      period = Number(parts[1]);
+      break;
+    } catch { /* try another location */ }
+  }
+  quota ??= firstNumber(locations.cpu, 'cpu.cfs_quota_us');
+  period ??= firstNumber(locations.cpu, 'cpu.cfs_period_us');
   let usageUsec;
-  try {
-    const stat = fs.readFileSync(path.join(root, 'cpu.stat'), 'utf8');
-    const match = stat.match(/(?:^|\n)usage_usec\s+(\d+)/);
-    usageUsec = match ? Number(match[1]) : undefined;
-  } catch {
-    const usageNs = readNumber(path.join(root, 'cpuacct', 'cpuacct.usage'));
+  for (const directory of locations.v2) {
+    try {
+      const stat = fs.readFileSync(path.join(directory, 'cpu.stat'), 'utf8');
+      const match = stat.match(/(?:^|\n)usage_usec\s+(\d+)/);
+      if (match) { usageUsec = Number(match[1]); break; }
+    } catch { /* try another location */ }
+  }
+  if (usageUsec == null) {
+    const usageNs = firstNumber(locations.cpuacct, 'cpuacct.usage');
     usageUsec = usageNs == null ? undefined : usageNs / 1000;
   }
-  let allocatedCpuCores = quota && period && quota > 0 ? quota / period : undefined;
+  const allocatedCpuCores = Number.isFinite(quota) && Number.isFinite(period) && quota > 0 && period > 0 ? quota / period : undefined;
   let containerCpuPercent;
-  if (usageUsec != null && allocatedCpuCores && previousCgroupCpu && now > previousCgroupCpu.at) {
+  if (usageUsec != null && allocatedCpuCores && previousCgroupCpu?.key === locations.identity && now > previousCgroupCpu.at) {
     const capacityUsec = (now - previousCgroupCpu.at) * 1000 * allocatedCpuCores;
-    containerCpuPercent = Math.round(100 * Math.max(0, usageUsec - previousCgroupCpu.usageUsec) / capacityUsec);
+    containerCpuPercent = Math.min(100, Math.round(100 * Math.max(0, usageUsec - previousCgroupCpu.usageUsec) / capacityUsec));
   }
-  if (usageUsec != null) previousCgroupCpu = { at: now, usageUsec };
+  if (usageUsec != null) previousCgroupCpu = { key: locations.identity, at: now, usageUsec };
   const plausibleMemoryLimit = memoryMax && memoryMax < os.totalmem() * 0.99;
-  const explicitContainer = Boolean(process.env.KUBERNETES_SERVICE_HOST || process.env.REMOTE_CONTAINERS || process.env.CODESPACES);
+  const podMembership = /kubepods|(?:^|\/)pod[0-9a-f_-]{8,}/i.test(locations.membership);
+  const explicitContainer = Boolean(process.env.KUBERNETES_SERVICE_HOST || process.env.REMOTE_CONTAINERS || process.env.CODESPACES || /docker|containerd|libpod|kubepods/i.test(locations.membership));
   if (!plausibleMemoryLimit && !allocatedCpuCores && !explicitContainer) return undefined;
   return {
-    resourceScope: process.env.KUBERNETES_SERVICE_HOST ? 'kubernetes-pod' : 'container',
+    resourceScope: process.env.KUBERNETES_SERVICE_HOST || podMembership ? 'kubernetes-pod' : 'container',
+    cgroupPath: locations.identity,
     allocatedCpuCores,
     cpuPercent: containerCpuPercent,
     totalMemoryBytes: plausibleMemoryLimit ? memoryMax : undefined,
-    freeMemoryBytes: plausibleMemoryLimit ? Math.max(0, memoryMax - (memoryCurrent || 0)) : undefined,
-    memoryPercent: plausibleMemoryLimit ? Math.round(100 * (memoryCurrent || 0) / memoryMax) : undefined
+    freeMemoryBytes: plausibleMemoryLimit ? Math.max(0, memoryMax - (memoryCurrent ?? 0)) : undefined,
+    memoryPercent: plausibleMemoryLimit ? Math.min(100, Math.round(100 * (memoryCurrent ?? 0) / memoryMax)) : undefined
   };
 }
 
 let networkCache;
-async function networkProbe(now = Date.now()) {
-  if (networkCache && now - networkCache.sampledAt < 5000) return networkCache;
+async function probeDnsTargets(lookup, targets, timeoutMs = 2500) {
   const start = Date.now();
   let timeout;
   try {
-    await Promise.race([dns.lookup('api.anthropic.com'), new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('timeout')), 2500); })]);
-    networkCache = { network: 'online', networkLatencyMs: Date.now() - start, networkProbeKind: 'dns', sampledAt: now };
+    const networkProbeHost = await Promise.race([
+      Promise.any(targets.map(target => lookup(target).then(() => target))),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('timeout')), timeoutMs); })
+    ]);
+    return { network: 'online', networkLatencyMs: Date.now() - start, networkProbeKind: 'dns', networkProbeHost };
   } catch {
-    networkCache = { network: 'offline', networkLatencyMs: Date.now() - start, networkProbeKind: 'dns', sampledAt: now };
+    return { network: 'unknown', networkLatencyMs: undefined, networkProbeDurationMs: Date.now() - start, networkProbeKind: 'dns', networkProbeTargets: targets };
   } finally { clearTimeout(timeout); }
+}
+
+async function networkProbe(now = Date.now()) {
+  if (networkCache && now - networkCache.sampledAt < 5000) return networkCache;
+  const targets = ['api.anthropic.com', 'api.openai.com', 'github.com'];
+  networkCache = { ...await probeDnsTargets(dns.lookup, targets), sampledAt: now };
   return networkCache;
 }
 
@@ -380,8 +456,9 @@ async function sampleHost(workspacePath = os.homedir()) {
   const targets = requestedTargets.filter(value => typeof value === 'string' && value.length > 0);
   if (!targets.length) targets.push(os.homedir());
   const disk = selectMostConstrainedDisk(targets);
+  const diskLimitBytes = parseKubernetesBytes(process.env.AGENT_RUNTIME_LENS_EPHEMERAL_STORAGE_LIMIT_BYTES || process.env.AGENT_RUNTIME_LENS_EPHEMERAL_STORAGE_LIMIT);
   const sampledCpuPercent = container?.allocatedCpuCores ? container.cpuPercent : cpuPercent();
-  return { hostname: os.hostname(), platform: `${os.platform()} ${os.release()}`, resourceScope: container?.resourceScope || 'host', allocatedCpuCores: container?.allocatedCpuCores, cpuPercent: sampledCpuPercent, memoryPercent, totalMemoryBytes: total, freeMemoryBytes: free, ...disk, ...(await networkProbe()), sampledAt: Date.now() };
+  return { hostname: os.hostname(), platform: `${os.platform()} ${os.release()}`, resourceScope: container?.resourceScope || 'host', allocatedCpuCores: container?.allocatedCpuCores, cpuPercent: sampledCpuPercent, memoryPercent, totalMemoryBytes: total, freeMemoryBytes: free, diskLimitBytes, ...disk, ...(await networkProbe()), sampledAt: Date.now() };
 }
 
 let windowsPeerCache;
@@ -412,4 +489,4 @@ async function sampleWindowsPeerFromWsl(now = Date.now()) {
   }
 }
 
-module.exports = { latestFile, inferPhase, clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, normalizeTimestamp, readClineSignal, readClineDatabase, currentClineLifecycle, readClaudeSignal, detectAgents, cpuPercent, cgroupMetrics, selectMostConstrainedDisk, sampleHost, sampleWindowsPeerFromWsl };
+module.exports = { latestFile, inferPhase, clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, normalizeTimestamp, readClineSignal, readClineDatabase, currentClineLifecycle, readClaudeSignal, clineStorageRoots, detectAgents, cpuPercent, parseKubernetesBytes, cgroupMetrics, probeDnsTargets, selectMostConstrainedDisk, sampleHost, sampleWindowsPeerFromWsl };

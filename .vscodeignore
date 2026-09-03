@@ -1,5 +1,5 @@
 .github/**
 .vscode/**
 test/**
+e2e/**
 *.vsix
-

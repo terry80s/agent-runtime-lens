@@ -1,8 +1,8 @@
 {
   "name": "ai-agent-runtime-lens",
   "displayName": "Agent Runtime Lens",
-  "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.13",
+  "description": "Observe Cline and Claude Code activity plus local, Remote-SSH, container, and Pod resource facts.",
+  "version": "0.9.0",
   "publisher": "terry80s",
   "icon": "assets/agent-runtime-lens-icon.png",
   "license": "MIT",
@@ -37,58 +37,6 @@
     "workspace"
   ],
   "contributes": {
-    "colors": [
-      {
-        "id": "agentRuntimeLens.status.green",
-        "description": "Agent Runtime Lens healthy status",
-        "defaults": {
-          "dark": "#3FB950",
-          "light": "#1A7F37",
-          "highContrast": "#3FB950",
-          "highContrastLight": "#1A7F37"
-        }
-      },
-      {
-        "id": "agentRuntimeLens.status.blue",
-        "description": "Agent Runtime Lens user-attention status",
-        "defaults": {
-          "dark": "#58A6FF",
-          "light": "#0969DA",
-          "highContrast": "#58A6FF",
-          "highContrastLight": "#0969DA"
-        }
-      },
-      {
-        "id": "agentRuntimeLens.status.yellow",
-        "description": "Agent Runtime Lens warning status",
-        "defaults": {
-          "dark": "#D29922",
-          "light": "#9A6700",
-          "highContrast": "#E3B341",
-          "highContrastLight": "#9A6700"
-        }
-      },
-      {
-        "id": "agentRuntimeLens.status.red",
-        "description": "Agent Runtime Lens failure status",
-        "defaults": {
-          "dark": "#F85149",
-          "light": "#CF222E",
-          "highContrast": "#FF7B72",
-          "highContrastLight": "#CF222E"
-        }
-      },
-      {
-        "id": "agentRuntimeLens.status.gray",
-        "description": "Agent Runtime Lens idle or unknown status",
-        "defaults": {
-          "dark": "#8B949E",
-          "light": "#57606A",
-          "highContrast": "#C9D1D9",
-          "highContrastLight": "#57606A"
-        }
-      }
-    ],
     "commands": [
       {
         "command": "agentRuntimeLens.showStatus",
