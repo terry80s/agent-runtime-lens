@@ -1,8 +1,8 @@
 {
-  "name": "agent-pulse-runtime-monitor",
-  "displayName": "Agent Pulse",
+  "name": "ai-agent-runtime-lens",
+  "displayName": "Agent Runtime Lens",
   "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "publisher": "terry80s",
   "icon": "assets/agent-pulse-icon.png",
   "license": "MIT",
@@ -40,7 +40,7 @@
     "colors": [
       {
         "id": "agentPulse.status.green",
-        "description": "Agent Pulse healthy status",
+        "description": "Agent Runtime Lens healthy status",
         "defaults": {
           "dark": "#3FB950",
           "light": "#1A7F37",
@@ -50,7 +50,7 @@
       },
       {
         "id": "agentPulse.status.blue",
-        "description": "Agent Pulse user-attention status",
+        "description": "Agent Runtime Lens user-attention status",
         "defaults": {
           "dark": "#58A6FF",
           "light": "#0969DA",
@@ -60,7 +60,7 @@
       },
       {
         "id": "agentPulse.status.yellow",
-        "description": "Agent Pulse warning status",
+        "description": "Agent Runtime Lens warning status",
         "defaults": {
           "dark": "#D29922",
           "light": "#9A6700",
@@ -70,7 +70,7 @@
       },
       {
         "id": "agentPulse.status.red",
-        "description": "Agent Pulse failure status",
+        "description": "Agent Runtime Lens failure status",
         "defaults": {
           "dark": "#F85149",
           "light": "#CF222E",
@@ -80,7 +80,7 @@
       },
       {
         "id": "agentPulse.status.gray",
-        "description": "Agent Pulse idle or unknown status",
+        "description": "Agent Runtime Lens idle or unknown status",
         "defaults": {
           "dark": "#8B949E",
           "light": "#57606A",
@@ -92,38 +92,38 @@
     "commands": [
       {
         "command": "agentPulse.showStatus",
-        "title": "Agent Pulse: Show Current Status"
+        "title": "Agent Runtime Lens: Show Current Status"
       },
       {
         "command": "agentPulse.runDiagnosis",
-        "title": "Agent Pulse: Is It Stuck?"
+        "title": "Agent Runtime Lens: Is It Stuck?"
       },
       {
         "command": "agentPulse.openDashboard",
-        "title": "Agent Pulse: Open Dashboard"
+        "title": "Agent Runtime Lens: Open Dashboard"
       },
       {
         "command": "agentPulse.enableClineIntegration",
-        "title": "Agent Pulse: Enable Cline Deep Visibility"
+        "title": "Agent Runtime Lens: Enable Cline Deep Visibility"
       },
       {
         "command": "agentPulse.exportDiagnostics",
-        "title": "Agent Pulse: Export Diagnostics"
+        "title": "Agent Runtime Lens: Export Diagnostics"
       },
       {
         "command": "agentPulse.refresh",
-        "title": "Agent Pulse: Refresh Now"
+        "title": "Agent Runtime Lens: Refresh Now"
       }
     ],
     "configuration": {
-      "title": "Agent Pulse",
+      "title": "Agent Runtime Lens",
       "properties": {
         "agentPulse.refreshIntervalSeconds": {
           "type": "number",
           "default": 3,
           "minimum": 1,
           "maximum": 60,
-          "description": "How often Agent Pulse samples local evidence."
+          "description": "How often Agent Runtime Lens samples local evidence."
         },
         "agentPulse.slowThresholdSeconds": {
           "type": "number",

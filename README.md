@@ -1,4 +1,4 @@
-# Agent Pulse
+# Agent Runtime Lens
 
 Agent-first status and diagnostics for Cline, Claude Code, and the host running them.
 
@@ -10,7 +10,7 @@ Agent-first status and diagnostics for Cline, Claude Code, and the host running 
 | Claude Code | Supported | JSONL/hook evidence available to the current execution environment |
 | GitHub Copilot | Installed-state only | Not available: Copilot session hooks are private proposed VS Code APIs |
 
-Agent Pulse shows an installed Copilot as a compact gray `Copilot` status item instead of `No agent`. The visibility limitation stays in the hover/dashboard. It does not infer private activity from CPU or process fluctuations.
+Agent Runtime Lens shows an installed Copilot as a compact gray `Copilot` status item instead of `No agent`. The visibility limitation stays in the hover/dashboard. It does not infer private activity from CPU or process fluctuations.
 
 ## What the MVP does
 
@@ -43,12 +43,12 @@ Open this folder in VS Code and press `F5` to launch an Extension Development Ho
 
 Commands:
 
-- `Agent Pulse: Show Current Status`
-- `Agent Pulse: Is It Stuck?`
-- `Agent Pulse: Open Dashboard`
-- `Agent Pulse: Enable Cline Deep Visibility` installs a workspace-local, metadata-only Cline observer plugin. Start a new Cline session after enabling it.
-- `Agent Pulse: Export Diagnostics`
-- `Agent Pulse: Refresh Now`
+- `Agent Runtime Lens: Show Current Status`
+- `Agent Runtime Lens: Is It Stuck?`
+- `Agent Runtime Lens: Open Dashboard`
+- `Agent Runtime Lens: Enable Cline Deep Visibility` installs a workspace-local, metadata-only Cline observer plugin. Start a new Cline session after enabling it.
+- `Agent Runtime Lens: Export Diagnostics`
+- `Agent Runtime Lens: Refresh Now`
 
 ## Test
 
@@ -59,4 +59,4 @@ npm run check
 
 ## Evidence levels and limits
 
-Cline 4.1.x builds do not all expose the same public extension API. Agent Pulse therefore negotiates capabilities: live SDK/runtime events first, the metadata-only workspace observer second, and lifecycle database evidence last. The UI says `step undisclosed` when Cline proves that a session is running but publishes no current operation; it does not invent `slow` or `stalled`. Windows peer sampling is available from WSL. Other remote transports cannot inspect the UI host without a separately running UI-side companion and are shown as unavailable.
+Cline 4.1.x builds do not all expose the same public extension API. Agent Runtime Lens therefore negotiates capabilities: live SDK/runtime events first, the metadata-only workspace observer second, and lifecycle database evidence last. The UI says `step undisclosed` when Cline proves that a session is running but publishes no current operation; it does not invent `slow` or `stalled`. Windows peer sampling is available from WSL. Other remote transports cannot inspect the UI host without a separately running UI-side companion and are shown as unavailable.

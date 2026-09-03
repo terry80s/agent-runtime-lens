@@ -111,12 +111,12 @@ function renderDashboard() {
   const incident = attention ? `<section class="incident ${primary?.color === 'red' || snapshot.health.color === 'red' ? 'incident-red' : 'incident-warn'}"><b>Needs attention</b><div>${escapeHtml(diagnosis(primary, snapshot.health))}</div></section>` : visibilityLimited ? `<section class="quiet"><b>Environment clear · Agent visibility limited</b><div>${escapeHtml(diagnosis(primary, snapshot.health))}</div></section>` : '<section class="quiet"><b>All clear</b> · Agent and resource evidence show no current issue.</section>';
   const quality = evidenceQuality(primary?.evidenceSource);
   const nonce = crypto.randomBytes(16).toString('base64');
-  dashboard.webview.html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:20px;max-width:1300px;margin:auto}.titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:8px}.actions button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:5px 10px;cursor:pointer}.actions button:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:2px}.hero{font-size:18px;padding:14px;border-left:4px solid var(--vscode-focusBorder);background:var(--vscode-editor-inactiveSelectionBackground)}.incident,.quiet{padding:12px 14px;margin:12px 0}.incident{border-left:4px solid var(--vscode-editorWarning-foreground);background:var(--vscode-inputValidation-warningBackground)}.incident-red{border-color:var(--vscode-editorError-foreground);background:var(--vscode-inputValidation-errorBackground)}.quiet{border:1px solid var(--vscode-widget-border);color:var(--vscode-descriptionForeground)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:16px 0}.card{border:1px solid var(--vscode-widget-border);padding:14px;background:var(--vscode-editor-background)}h1,h2{margin-top:0}.state{font-size:24px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.metric{padding:10px;background:var(--vscode-textBlockQuote-background)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--vscode-widget-border)}details{margin-top:22px}.badge{font-size:11px;border:1px solid var(--vscode-widget-border);border-radius:9px;padding:1px 7px;color:var(--vscode-descriptionForeground);font-weight:normal}.trust{color:var(--vscode-descriptionForeground);margin-top:-8px}.flights{border:1px solid var(--vscode-widget-border);background:var(--vscode-editor-background)}.flight{display:grid;grid-template-columns:5px 1fr;gap:12px;padding:12px 14px;border-bottom:1px solid var(--vscode-widget-border)}.flight:last-child{border-bottom:0}.rail{border-radius:3px}.flight-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:7px}.flight-head span{color:var(--vscode-descriptionForeground)}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.green{background:var(--vscode-testing-iconPassed)}.blue{background:var(--vscode-charts-blue)}.yellow{background:var(--vscode-editorWarning-foreground)}.red{background:var(--vscode-editorError-foreground)}.gray{background:var(--vscode-descriptionForeground)}</style></head><body><div class="titlebar"><h1>Agent Pulse</h1><div class="actions"><button aria-label="Export redacted diagnostics" data-action="export">Export</button><button aria-label="Reload VS Code Window" data-action="reload">Reload Window</button></div></div><div class="hero">${escapeHtml(diagnosis(primary, snapshot.health))}</div>${incident}<p class="trust">Evidence: ${escapeHtml(quality.label)} · trust ${quality.level}/4 · data ${escapeHtml(snapshot.freshness)}</p><div class="grid">${agents}${hostCard(snapshot.host, currentTitle, snapshot.health)}${peerCard}</div><h2>Agent Flight Recorder</h2><div class="flights">${flights}</div><details ${rawTimelineOpen ? 'open' : ''}><summary>Raw evidence timeline</summary><table><thead><tr><th>Time</th><th>Agent state</th><th>Source</th><th>Evidence</th><th>CPU</th><th>Memory</th><th>Disk free</th><th>Network</th></tr></thead><tbody>${rows}</tbody></table></details><script nonce="${nonce}">const vscode=acquireVsCodeApi();scrollTo(0,${Math.max(0, Math.round(dashboardScrollY))});document.querySelector('details').addEventListener('toggle',e=>vscode.postMessage({type:'rawOpen',value:e.target.open}));document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>vscode.postMessage({type:'action',value:button.dataset.action})));let pending;addEventListener('scroll',()=>{clearTimeout(pending);pending=setTimeout(()=>vscode.postMessage({type:'scroll',value:scrollY}),100)});</script></body></html>`;
+  dashboard.webview.html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:20px;max-width:1300px;margin:auto}.titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:8px}.actions button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:5px 10px;cursor:pointer}.actions button:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:2px}.hero{font-size:18px;padding:14px;border-left:4px solid var(--vscode-focusBorder);background:var(--vscode-editor-inactiveSelectionBackground)}.incident,.quiet{padding:12px 14px;margin:12px 0}.incident{border-left:4px solid var(--vscode-editorWarning-foreground);background:var(--vscode-inputValidation-warningBackground)}.incident-red{border-color:var(--vscode-editorError-foreground);background:var(--vscode-inputValidation-errorBackground)}.quiet{border:1px solid var(--vscode-widget-border);color:var(--vscode-descriptionForeground)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:16px 0}.card{border:1px solid var(--vscode-widget-border);padding:14px;background:var(--vscode-editor-background)}h1,h2{margin-top:0}.state{font-size:24px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.metric{padding:10px;background:var(--vscode-textBlockQuote-background)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--vscode-widget-border)}details{margin-top:22px}.badge{font-size:11px;border:1px solid var(--vscode-widget-border);border-radius:9px;padding:1px 7px;color:var(--vscode-descriptionForeground);font-weight:normal}.trust{color:var(--vscode-descriptionForeground);margin-top:-8px}.flights{border:1px solid var(--vscode-widget-border);background:var(--vscode-editor-background)}.flight{display:grid;grid-template-columns:5px 1fr;gap:12px;padding:12px 14px;border-bottom:1px solid var(--vscode-widget-border)}.flight:last-child{border-bottom:0}.rail{border-radius:3px}.flight-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:7px}.flight-head span{color:var(--vscode-descriptionForeground)}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.green{background:var(--vscode-testing-iconPassed)}.blue{background:var(--vscode-charts-blue)}.yellow{background:var(--vscode-editorWarning-foreground)}.red{background:var(--vscode-editorError-foreground)}.gray{background:var(--vscode-descriptionForeground)}</style></head><body><div class="titlebar"><h1>Agent Runtime Lens</h1><div class="actions"><button aria-label="Export redacted diagnostics" data-action="export">Export</button><button aria-label="Reload VS Code Window" data-action="reload">Reload Window</button></div></div><div class="hero">${escapeHtml(diagnosis(primary, snapshot.health))}</div>${incident}<p class="trust">Evidence: ${escapeHtml(quality.label)} · trust ${quality.level}/4 · data ${escapeHtml(snapshot.freshness)}</p><div class="grid">${agents}${hostCard(snapshot.host, currentTitle, snapshot.health)}${peerCard}</div><h2>Agent Flight Recorder</h2><div class="flights">${flights}</div><details ${rawTimelineOpen ? 'open' : ''}><summary>Raw evidence timeline</summary><table><thead><tr><th>Time</th><th>Agent state</th><th>Source</th><th>Evidence</th><th>CPU</th><th>Memory</th><th>Disk free</th><th>Network</th></tr></thead><tbody>${rows}</tbody></table></details><script nonce="${nonce}">const vscode=acquireVsCodeApi();scrollTo(0,${Math.max(0, Math.round(dashboardScrollY))});document.querySelector('details').addEventListener('toggle',e=>vscode.postMessage({type:'rawOpen',value:e.target.open}));document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>vscode.postMessage({type:'action',value:button.dataset.action})));let pending;addEventListener('scroll',()=>{clearTimeout(pending);pending=setTimeout(()=>vscode.postMessage({type:'scroll',value:scrollY}),100)});</script></body></html>`;
 }
 
 function openDashboard() {
   if (!dashboard) {
-    dashboard = vscode.window.createWebviewPanel('agentPulse.dashboard', 'Agent Pulse', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    dashboard = vscode.window.createWebviewPanel('agentPulse.dashboard', 'Agent Runtime Lens', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
     dashboard.onDidDispose(() => { dashboard = undefined; });
     dashboard.webview.onDidReceiveMessage(message => {
       if (message?.type === 'rawOpen') rawTimelineOpen = Boolean(message.value);
@@ -148,8 +148,8 @@ function updateStatus() {
   const memoryTrend = trendLabel(trend(recentMetric('memoryPercent')));
   const networkTrend = trendLabel(trend(recentMetric('networkLatencyMs'), 25));
   const peerLine = snapshot.peerHost ? `\n| Windows host | ${metricSummary(snapshot.peerHost)} |` : '';
-  statusItem.tooltip = new vscode.MarkdownString(`**Agent Pulse** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n| ${primary?.name || '—'} | ${primary?.label || 'No agent'} | ${evidenceLabel(primary)} | ${agentAge} |\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
-  statusItem.accessibilityInformation = { label: `Agent Pulse. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Environment ${snapshot.health.color}.` };
+  statusItem.tooltip = new vscode.MarkdownString(`**Agent Runtime Lens** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n| ${primary?.name || '—'} | ${primary?.label || 'No agent'} | ${evidenceLabel(primary)} | ${agentAge} |\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
+  statusItem.accessibilityInformation = { label: `Agent Runtime Lens. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Environment ${snapshot.health.color}.` };
   statusItem.show();
   const environmentLabel = environment.short;
   const peerColor = snapshot.peerHost?.unavailable ? 'gray' : snapshot.peerHealth?.color || 'green';
@@ -176,8 +176,8 @@ function updateStatus() {
     const color = displayColors[kind].color;
     resourceItems[kind].text = data.available ? data.text : `${data.icon}$(circle-slash)`;
     resourceItems[kind].color = color === 'green' ? undefined : foregroundColors[color];
-    resourceItems[kind].tooltip = `${data.available ? data.tooltip : `${kind[0].toUpperCase()}${kind.slice(1)} metric unavailable`}\n\nClick for Agent Pulse dashboard.`;
-    resourceItems[kind].accessibilityInformation = { label: `Agent Pulse ${kind}: ${data.available ? data.tooltip.replace(/\n/g, ', ') : 'unavailable'}` };
+    resourceItems[kind].tooltip = `${data.available ? data.tooltip : `${kind[0].toUpperCase()}${kind.slice(1)} metric unavailable`}\n\nClick for Agent Runtime Lens dashboard.`;
+    resourceItems[kind].accessibilityInformation = { label: `Agent Runtime Lens ${kind}: ${data.available ? data.tooltip.replace(/\n/g, ', ') : 'unavailable'}` };
     if (mode === 'minimal') resourceItems[kind].hide(); else resourceItems[kind].show();
   }
 }
@@ -230,16 +230,16 @@ async function refreshOnce() {
     updateStatus();
     renderDashboard();
   } catch (error) {
-    statusItem.text = '$(error) Agent Pulse unavailable';
+    statusItem.text = '$(error) Agent Runtime Lens unavailable';
     statusItem.backgroundColor = colors.red;
-    statusItem.tooltip = `Agent Pulse sampling failed: ${error?.message || 'unknown error'}`;
+    statusItem.tooltip = `Agent Runtime Lens sampling failed: ${error?.message || 'unknown error'}`;
     for (const [kind, item] of Object.entries(resourceItems)) {
       item.text = kind === 'environment' ? '$(remote) UNKNOWN$(circle-slash)' : '$(circle-slash)';
       item.color = foregroundColors.gray;
       item.tooltip = 'Metric unavailable because the latest sampling cycle failed.';
       item.show();
     }
-    console.error('Agent Pulse refresh failed', error);
+    console.error('Agent Runtime Lens refresh failed', error);
   }
 }
 
@@ -262,16 +262,16 @@ async function showStatus() {
   items.push({ label: '$(graph) Open timeline dashboard', command: 'agentPulse.openDashboard' });
   items.push({ label: '$(export) Export redacted diagnostics', command: 'agentPulse.exportDiagnostics' });
   items.push({ label: '$(debug-restart) Reload VS Code Window', command: 'workbench.action.reloadWindow' });
-  const selected = await vscode.window.showQuickPick(items, { title: 'Agent Pulse — Current Status', placeHolder: 'Select an action or inspect the current evidence' });
+  const selected = await vscode.window.showQuickPick(items, { title: 'Agent Runtime Lens — Current Status', placeHolder: 'Select an action or inspect the current evidence' });
   if (selected?.command) await vscode.commands.executeCommand(selected.command);
 }
 
 async function exportDiagnostics() {
-  const target = await vscode.window.showSaveDialog({ title: 'Export Agent Pulse diagnostics', defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd(), `agent-pulse-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)), filters: { JSON: ['json'] } });
+  const target = await vscode.window.showSaveDialog({ title: 'Export Agent Runtime Lens diagnostics', defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd(), `agent-pulse-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)), filters: { JSON: ['json'] } });
   if (!target) return;
   const payload = redact({ schemaVersion: 2, generatedAt: new Date().toISOString(), privacy: { includesPrompts: false, includesResponses: false, includesSourceCode: false, redacted: true }, capabilities: { cline: 'live-or-lifecycle', claudeCode: 'observed', githubCopilot: 'installed-only', localPeerFromWsl: true, localPeerFromSsh: false }, diagnosis: diagnosis(choosePrimary(snapshot.agents), snapshot.health), current: snapshot, timeline });
   await fs.promises.writeFile(target.fsPath, JSON.stringify(payload, null, 2), 'utf8');
-  const action = await vscode.window.showInformationMessage('Agent Pulse diagnostics exported without prompt or source-code content.', 'Open File');
+  const action = await vscode.window.showInformationMessage('Agent Runtime Lens diagnostics exported without prompt or source-code content.', 'Open File');
   if (action === 'Open File') await vscode.window.showTextDocument(target);
 }
 
@@ -288,17 +288,17 @@ async function enableClineIntegration() {
 function activate(context) {
   clineApiAdapter = createClineApiAdapter(vscode, observation => { liveCline = observation; });
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusItem.name = 'Agent Pulse';
+  statusItem.name = 'Agent Runtime Lens';
   statusItem.command = 'agentPulse.showStatus';
   rescueItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 94);
-  rescueItem.name = 'Agent Pulse Reload Window Rescue';
+  rescueItem.name = 'Agent Runtime Lens Reload Window Rescue';
   rescueItem.text = '$(debug-restart)';
   rescueItem.tooltip = 'Reload VS Code Window · rescue a stuck Agent or remote development connection';
   rescueItem.command = 'workbench.action.reloadWindow';
   rescueItem.accessibilityInformation = { label: 'Reload VS Code Window. Rescue a stuck Agent or remote connection.' };
   for (const [index, kind] of ['environment', 'cpu', 'memory', 'disk', 'network'].entries()) {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99 - index);
-    item.name = `Agent Pulse ${kind}`;
+    item.name = `Agent Runtime Lens ${kind}`;
     item.command = 'agentPulse.openDashboard';
     resourceItems[kind] = item;
   }
