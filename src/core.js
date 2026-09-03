@@ -174,6 +174,14 @@ function choosePrimary(agents) {
   return [...agents].sort((a, b) => Number(Boolean(a?.unsupportedTelemetry)) - Number(Boolean(b?.unsupportedTelemetry)) || ((SEVERITY[b?.color] ?? 0) - (SEVERITY[a?.color] ?? 0)) || ((Number(b?.lastActivityAt) || 0) - (Number(a?.lastActivityAt) || 0)))[0];
 }
 
+function agentStatusIcon(agent) {
+  if (!agent) return 'circle-slash';
+  if (agent.state === STATES.IDLE) return 'circle-outline';
+  if (agent.visibilityLimited || agent.unsupportedTelemetry) return 'circle-slash';
+  if (agent.state === STATES.UNKNOWN && agent.active) return 'circle-outline';
+  return agent.color === 'gray' ? 'circle-slash' : 'circle-filled';
+}
+
 function redact(value) {
   if (typeof value === 'string') {
     return value
@@ -192,4 +200,4 @@ function redact(value) {
   return value;
 }
 
-module.exports = { STATES, hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, redact };
+module.exports = { STATES, hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact };

@@ -4,7 +4,7 @@ const vscode = require('vscode');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, redact } = require('./core');
+const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact } = require('./core');
 const { detectAgents, sampleHost, sampleWindowsPeerFromWsl } = require('./detectors');
 const { createClineApiAdapter } = require('./cline-api');
 
@@ -134,7 +134,7 @@ function updateStatus() {
   const agentColor = primary?.state === 'idle' ? 'green' : primary?.color || 'gray';
   const dominant = dominantColor(snapshot.health.color, agentColor);
   const mode = vscode.workspace.getConfiguration('agentRuntimeLens').get('statusBarMode', 'text');
-  const agentIcon = !primary ? '$(circle-slash)' : primary.state === 'idle' ? '$(circle-outline)' : primary.color === 'gray' ? '$(circle-slash)' : '$(circle-filled)';
+  const agentIcon = `$(${agentStatusIcon(primary)})`;
   if (!primary) statusItem.text = mode === 'compact' ? `${agentIcon}` : `${agentIcon} No agent`;
   else if (primary.statusLabel) statusItem.text = `${agentIcon} ${primary.statusLabel}`;
   else {

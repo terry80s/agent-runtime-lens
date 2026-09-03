@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, redact } = require('../src/core');
+const { hostHealth, metricStatus, formatCapacity, fixedSlot, formatLatency, median, trend, stabilizeColor, dataFreshness, evidenceQuality, dominantColor, shouldUseLiveObservation, environmentKind, classifyAgent, choosePrimary, agentStatusIcon, redact } = require('../src/core');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -160,6 +160,16 @@ test('silence without a heartbeat contract never becomes a false stall', () => {
   assert.equal(result.color, 'gray');
   assert.equal(result.label, 'Running · step undisclosed');
   assert.equal(result.shortLabel, 'Active');
+  assert.equal(agentStatusIcon(result), 'circle-outline');
+});
+
+test('status icons distinguish active-but-undisclosed from unavailable visibility', () => {
+  assert.equal(agentStatusIcon(undefined), 'circle-slash');
+  assert.equal(agentStatusIcon({ state: 'idle', color: 'gray' }), 'circle-outline');
+  assert.equal(agentStatusIcon({ state: 'unknown', active: true, color: 'gray' }), 'circle-outline');
+  assert.equal(agentStatusIcon({ state: 'unknown', active: false, visibilityLimited: true, color: 'gray' }), 'circle-slash');
+  assert.equal(agentStatusIcon({ state: 'unknown', active: false, unsupportedTelemetry: true, color: 'gray' }), 'circle-slash');
+  assert.equal(agentStatusIcon({ state: 'reading', active: true, color: 'green' }), 'circle-filled');
 });
 
 test('old persisted evidence is idle rather than working', () => {
