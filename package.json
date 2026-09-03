@@ -2,7 +2,7 @@
   "name": "agent-pulse",
   "displayName": "Agent Pulse",
   "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "publisher": "local-development",
   "icon": "assets/agent-pulse-icon.png",
   "license": "MIT",
