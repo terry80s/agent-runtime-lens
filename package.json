@@ -1,0 +1,160 @@
+{
+  "name": "agent-pulse",
+  "displayName": "Agent Pulse",
+  "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
+  "version": "0.8.1",
+  "publisher": "local-development",
+  "icon": "assets/agent-pulse-icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/terry80s/agent-pulse.git"
+  },
+  "homepage": "https://github.com/terry80s/agent-pulse#readme",
+  "bugs": {
+    "url": "https://github.com/terry80s/agent-pulse/issues"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "cline",
+    "claude",
+    "copilot",
+    "agent",
+    "monitor",
+    "diagnostics"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "contributes": {
+    "colors": [
+      {
+        "id": "agentPulse.status.green",
+        "description": "Agent Pulse healthy status",
+        "defaults": {
+          "dark": "#3FB950",
+          "light": "#1A7F37",
+          "highContrast": "#3FB950",
+          "highContrastLight": "#1A7F37"
+        }
+      },
+      {
+        "id": "agentPulse.status.blue",
+        "description": "Agent Pulse user-attention status",
+        "defaults": {
+          "dark": "#58A6FF",
+          "light": "#0969DA",
+          "highContrast": "#58A6FF",
+          "highContrastLight": "#0969DA"
+        }
+      },
+      {
+        "id": "agentPulse.status.yellow",
+        "description": "Agent Pulse warning status",
+        "defaults": {
+          "dark": "#D29922",
+          "light": "#9A6700",
+          "highContrast": "#E3B341",
+          "highContrastLight": "#9A6700"
+        }
+      },
+      {
+        "id": "agentPulse.status.red",
+        "description": "Agent Pulse failure status",
+        "defaults": {
+          "dark": "#F85149",
+          "light": "#CF222E",
+          "highContrast": "#FF7B72",
+          "highContrastLight": "#CF222E"
+        }
+      },
+      {
+        "id": "agentPulse.status.gray",
+        "description": "Agent Pulse idle or unknown status",
+        "defaults": {
+          "dark": "#8B949E",
+          "light": "#57606A",
+          "highContrast": "#C9D1D9",
+          "highContrastLight": "#57606A"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "agentPulse.showStatus",
+        "title": "Agent Pulse: Show Current Status"
+      },
+      {
+        "command": "agentPulse.runDiagnosis",
+        "title": "Agent Pulse: Is It Stuck?"
+      },
+      {
+        "command": "agentPulse.openDashboard",
+        "title": "Agent Pulse: Open Dashboard"
+      },
+      {
+        "command": "agentPulse.enableClineIntegration",
+        "title": "Agent Pulse: Enable Cline Deep Visibility"
+      },
+      {
+        "command": "agentPulse.exportDiagnostics",
+        "title": "Agent Pulse: Export Diagnostics"
+      },
+      {
+        "command": "agentPulse.refresh",
+        "title": "Agent Pulse: Refresh Now"
+      }
+    ],
+    "configuration": {
+      "title": "Agent Pulse",
+      "properties": {
+        "agentPulse.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "How often Agent Pulse samples local evidence."
+        },
+        "agentPulse.slowThresholdSeconds": {
+          "type": "number",
+          "default": 45,
+          "minimum": 10,
+          "description": "How long an unchanged active state lasts before it is marked slow."
+        },
+        "agentPulse.statusBarMode": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "compact",
+            "text"
+          ],
+          "default": "text",
+          "description": "Amount of detail shown in the status bar. Minimal hides the four resource values while keeping them in the Agent hover/dashboard."
+        },
+        "agentPulse.showReloadButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the small Reload Window rescue button in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none",
+    "check": "node --check src/extension.js && node --check src/core.js && node --check src/detectors.js && node --check src/cline-api.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.9.2"
+  }
+}
