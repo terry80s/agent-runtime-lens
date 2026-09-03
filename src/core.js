@@ -28,7 +28,7 @@ function fixedSlot(value, width) {
 }
 
 function formatLatency(milliseconds) {
-  if (milliseconds == null || !Number.isFinite(Number(milliseconds))) return fixedSlot('—', 5);
+  if (milliseconds == null || !Number.isFinite(Number(milliseconds)) || Number(milliseconds) < 0) return fixedSlot('—', 5);
   const value = Number(milliseconds);
   if (value >= 1000) return fixedSlot(`${Math.min(99, Math.round(value / 100) / 10)}s`, 5);
   return fixedSlot(`${Math.round(value)}ms`, 5);
@@ -71,8 +71,8 @@ function dominantColor(...colors) {
 }
 
 function shouldUseLiveObservation(live, persisted, now = Date.now()) {
-  if (!live) return false;
-  if (persisted?.lastActivityAt > live.lastActivityAt) return false;
+  if (!live || !Number.isFinite(live.lastActivityAt)) return false;
+  if (Number.isFinite(persisted?.lastActivityAt) && persisted.lastActivityAt > live.lastActivityAt) return false;
   const terminal = live.failed || live.active === false || ['completed', 'cancelled', 'idle', 'failed'].includes(live.phase);
   return now - live.lastActivityAt <= (terminal ? 120000 : 30 * 60000);
 }
@@ -113,7 +113,7 @@ function hostHealth(metrics) {
 
 function metricStatus(kind, value, extra = {}) {
   if (kind === 'cpu' || kind === 'memory') {
-    if (value == null) return 'gray';
+    if (!Number.isFinite(value)) return 'gray';
     if (kind === 'memory' && extra.freeMemoryBytes != null) {
       if (extra.freeMemoryBytes < 128 * 1048576) return 'red';
       if (extra.freeMemoryBytes < 256 * 1048576) return 'yellow';
@@ -121,14 +121,14 @@ function metricStatus(kind, value, extra = {}) {
     return value >= 95 ? 'red' : value >= 85 ? 'yellow' : 'green';
   }
   if (kind === 'disk') {
-    if (value == null) return 'gray';
+    if (!Number.isFinite(value)) return 'gray';
     if (extra.diskFreeBytes != null && extra.diskFreeBytes < 1024 ** 3) return 'red';
     if (extra.diskFreeBytes != null && extra.diskFreeBytes < 5 * 1024 ** 3) return 'yellow';
     return value <= 3 ? 'red' : value <= 10 ? 'yellow' : 'green';
   }
   if (kind === 'network') {
     if (extra.network === 'offline') return 'red';
-    if (value == null) return 'gray';
+    if (!Number.isFinite(value) || value < 0) return 'gray';
     return value >= 2000 ? 'red' : value >= 300 ? 'yellow' : 'green';
   }
   return 'gray';

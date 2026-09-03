@@ -35,6 +35,16 @@ test('individual resource indicators have independent colors', () => {
   assert.equal(metricStatus('network', 12, { network: 'offline' }), 'red');
 });
 
+test('invalid metric values stay unavailable instead of looking healthy', () => {
+  for (const value of [undefined, null, NaN, Infinity, -Infinity]) {
+    assert.equal(metricStatus('cpu', value), 'gray');
+    assert.equal(metricStatus('memory', value), 'gray');
+    assert.equal(metricStatus('disk', value), 'gray');
+  }
+  assert.equal(metricStatus('network', -1, { network: 'online' }), 'gray');
+  assert.equal(formatLatency(-1).trim(), '—');
+});
+
 test('capacities use compact human-readable units', () => {
   assert.equal(formatCapacity(16 * 1073741824), '16G');
   assert.equal(formatCapacity(4.6 * 1073741824), '4.6G');
@@ -84,6 +94,8 @@ test('live terminal evidence expires and cannot overwrite newer persistence', ()
   assert.equal(shouldUseLiveObservation(live, undefined, 60000), true);
   assert.equal(shouldUseLiveObservation(live, undefined, 200000), false);
   assert.equal(shouldUseLiveObservation({ ...live, active: true, phase: 'reading' }, { lastActivityAt: 2000 }, 3000), false);
+  assert.equal(shouldUseLiveObservation({ phase: 'reading', active: true }, undefined, 3000), false);
+  assert.equal(shouldUseLiveObservation({ phase: 'reading', active: true, lastActivityAt: NaN }, undefined, 3000), false);
 });
 
 test('stale samples and evidence strength are explicit', () => {
@@ -262,6 +274,7 @@ test('cgroup v2 memory is calculated against the container allocation', () => {
   assert.equal(result.memoryPercent, 50);
   assert.equal(result.totalMemoryBytes, 1073741824);
   assert.equal(result.allocatedCpuCores, 0.5);
+  assert.equal(result.cpuPercent, undefined);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -294,6 +307,8 @@ test('multi-root disk selection chooses the most constrained filesystem', () => 
   const result = selectMostConstrainedDisk([root, path.join(root, 'missing')]);
   assert.equal(result.diskPath, root);
   assert.ok(result.diskTotalBytes > 0);
+  assert.deepEqual(selectMostConstrainedDisk(undefined), {});
+  assert.deepEqual(selectMostConstrainedDisk([undefined, null, '']), {});
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -303,6 +318,13 @@ test('empty VS Code windows fall back to a real filesystem for disk metrics', as
   assert.ok(result.diskFreeBytes >= 0);
   assert.ok(Number.isFinite(result.diskFreePercent));
   assert.equal(typeof result.diskPath, 'string');
+});
+
+test('invalid workspace entries also fall back without breaking host sampling', async () => {
+  const result = await sampleHost([undefined, null, '']);
+  assert.ok(result.diskTotalBytes > 0);
+  assert.ok(Number.isFinite(result.memoryPercent));
+  assert.ok(['online', 'offline'].includes(result.network));
 });
 
 test('Cline 4 session database is read without selecting prompt content', () => {

@@ -76,13 +76,15 @@ function clinePhaseFromMessage(message) {
 }
 
 function readStructuredTail(filePath) {
+  let fd;
   try {
     const stat = fs.statSync(filePath);
-    const fd = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, 'r');
     const length = Math.min(stat.size, 256 * 1024);
     const buffer = Buffer.alloc(length);
     fs.readSync(fd, buffer, 0, length, stat.size - length);
     fs.closeSync(fd);
+    fd = undefined;
     const text = buffer.toString('utf8');
     try {
       const parsed = JSON.parse(text);
@@ -91,6 +93,11 @@ function readStructuredTail(filePath) {
       return text.split(/\r?\n/).filter(Boolean).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
     }
   } catch { return []; }
+  finally { if (fd != null) try { fs.closeSync(fd); } catch { /* already closed */ } }
+}
+
+function safeMtime(filePath) {
+  try { return fs.statSync(filePath).mtimeMs; } catch { return 0; }
 }
 
 function readClineEventFile(filePath) {
@@ -100,7 +107,7 @@ function readClineEventFile(filePath) {
     const candidate = record?.message && typeof record.message === 'object' ? { ...record, ...record.message } : record;
     const phase = clinePhaseFromMessage(candidate);
     if (phase !== 'working') {
-      return { phase, needsApproval: phase === 'approval' || phase === 'waiting_input', lastActivityAt: normalizeTimestamp(candidate.ts || candidate.timestamp || candidate.updated_at) || fs.statSync(filePath).mtimeMs, evidence: `Cline operation:${String(candidate.ask || candidate.say || candidate.event || candidate.kind || candidate.status || candidate.phase || phase)}` };
+      return { phase, needsApproval: phase === 'approval' || phase === 'waiting_input', lastActivityAt: normalizeTimestamp(candidate.ts || candidate.timestamp || candidate.updated_at) || safeMtime(filePath), evidence: `Cline operation:${String(candidate.ask || candidate.say || candidate.event || candidate.kind || candidate.status || candidate.phase || phase)}` };
     }
   }
   return undefined;
@@ -177,22 +184,25 @@ function claudePhaseFromRecord(record) {
 }
 
 function readClaudeSignal(filePath) {
+  let fd;
   try {
-    const fd = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, 'r');
     const size = fs.fstatSync(fd).size;
     const length = Math.min(size, 128 * 1024);
     const buffer = Buffer.alloc(length);
     fs.readSync(fd, buffer, 0, length, size - length);
     fs.closeSync(fd);
+    fd = undefined;
     const lines = buffer.toString('utf8').split(/\r?\n/).filter(Boolean);
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const record = JSON.parse(lines[i]);
         if (!['assistant', 'user'].includes(record.type)) continue;
-        return { phase: claudePhaseFromRecord(record), lastActivityAt: Date.parse(record.timestamp) || fs.statSync(filePath).mtimeMs, evidence: `Claude ${record.type} event` };
+        return { phase: claudePhaseFromRecord(record), lastActivityAt: Date.parse(record.timestamp) || safeMtime(filePath), evidence: `Claude ${record.type} event` };
       } catch { /* partial or malformed JSONL record */ }
     }
   } catch { /* unreadable file */ }
+  finally { if (fd != null) try { fs.closeSync(fd); } catch { /* already closed */ } }
   return undefined;
 }
 
@@ -206,6 +216,7 @@ function currentClineLifecycle(previous, current) {
 let previousClineDatabaseSignal;
 let seenCompanionActivityAt;
 async function detectAgents(workspacePaths = []) {
+  workspacePaths = Array.isArray(workspacePaths) ? workspacePaths.filter(value => typeof value === 'string' && value.length > 0) : [];
   const home = os.homedir();
   const processes = await processSnapshot();
   const candidates = [];
@@ -346,12 +357,14 @@ async function networkProbe(now = Date.now()) {
 
 function selectMostConstrainedDisk(paths) {
   const candidates = [];
-  for (const target of paths) {
+  for (const target of Array.isArray(paths) ? paths : []) {
+    if (typeof target !== 'string' || !target) continue;
     try {
       const stat = fs.statfsSync(target);
       const totalBytes = Number(stat.blocks) * Number(stat.bsize);
       const freeBytes = Number(stat.bavail) * Number(stat.bsize);
-      candidates.push({ diskPath: target, diskTotalBytes: totalBytes, diskFreeBytes: freeBytes, diskFreePercent: totalBytes ? Math.round(100 * freeBytes / totalBytes) : undefined });
+      if (!Number.isFinite(totalBytes) || totalBytes <= 0 || !Number.isFinite(freeBytes) || freeBytes < 0) continue;
+      candidates.push({ diskPath: target, diskTotalBytes: totalBytes, diskFreeBytes: freeBytes, diskFreePercent: Math.max(0, Math.min(100, Math.round(100 * freeBytes / totalBytes))) });
     } catch { /* target disappeared or filesystem is unavailable */ }
   }
   return candidates.sort((a, b) => (a.diskFreePercent ?? 101) - (b.diskFreePercent ?? 101))[0] || {};
@@ -363,11 +376,12 @@ async function sampleHost(workspacePath = os.homedir()) {
   const total = container?.totalMemoryBytes || hostTotal;
   const free = container?.freeMemoryBytes ?? os.freemem();
   const memoryPercent = container?.memoryPercent ?? (total ? Math.round(100 * (1 - free / total)) : 0);
-  const targets = Array.isArray(workspacePath)
-    ? (workspacePath.length ? workspacePath : [os.homedir()])
-    : [workspacePath || os.homedir()];
+  const requestedTargets = Array.isArray(workspacePath) ? workspacePath : [workspacePath];
+  const targets = requestedTargets.filter(value => typeof value === 'string' && value.length > 0);
+  if (!targets.length) targets.push(os.homedir());
   const disk = selectMostConstrainedDisk(targets);
-  return { hostname: os.hostname(), platform: `${os.platform()} ${os.release()}`, resourceScope: container?.resourceScope || 'host', allocatedCpuCores: container?.allocatedCpuCores, cpuPercent: container?.cpuPercent ?? cpuPercent(), memoryPercent, totalMemoryBytes: total, freeMemoryBytes: free, ...disk, ...(await networkProbe()), sampledAt: Date.now() };
+  const sampledCpuPercent = container?.allocatedCpuCores ? container.cpuPercent : cpuPercent();
+  return { hostname: os.hostname(), platform: `${os.platform()} ${os.release()}`, resourceScope: container?.resourceScope || 'host', allocatedCpuCores: container?.allocatedCpuCores, cpuPercent: sampledCpuPercent, memoryPercent, totalMemoryBytes: total, freeMemoryBytes: free, ...disk, ...(await networkProbe()), sampledAt: Date.now() };
 }
 
 let windowsPeerCache;
