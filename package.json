@@ -2,17 +2,17 @@
   "name": "ai-agent-runtime-lens",
   "displayName": "Agent Runtime Lens",
   "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "publisher": "terry80s",
   "icon": "assets/agent-pulse-icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/terry80s/agent-pulse.git"
+    "url": "https://github.com/terry80s/agent-runtime-lens.git"
   },
-  "homepage": "https://github.com/terry80s/agent-pulse#readme",
+  "homepage": "https://github.com/terry80s/agent-runtime-lens#readme",
   "bugs": {
-    "url": "https://github.com/terry80s/agent-pulse/issues"
+    "url": "https://github.com/terry80s/agent-runtime-lens/issues"
   },
   "engines": {
     "vscode": "^1.95.0"
