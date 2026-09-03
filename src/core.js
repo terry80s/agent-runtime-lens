@@ -78,13 +78,13 @@ function shouldUseLiveObservation(live, persisted, now = Date.now()) {
 }
 
 function environmentKind(remoteName, resourceScope) {
-  if (resourceScope === 'kubernetes-pod') return { short: 'POD', title: 'Pod allocation' };
-  if (resourceScope === 'container') return { short: 'CTR', title: 'Container allocation' };
-  if (remoteName === 'wsl') return { short: 'WSL', title: 'WSL environment' };
-  if (remoteName === 'ssh-remote') return { short: 'SSH', title: 'Remote SSH host' };
-  if (remoteName === 'dev-container' || remoteName === 'attached-container') return { short: 'DEV', title: 'Dev Container allocation' };
-  if (remoteName) return { short: 'REMOTE', title: `Remote environment (${remoteName})` };
-  return { short: 'LOCAL', title: 'Local host' };
+  if (resourceScope === 'kubernetes-pod') return { short: 'POD', title: 'Pod allocation', icon: 'cloud', remote: true };
+  if (resourceScope === 'container') return { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true };
+  if (remoteName === 'wsl') return { short: 'WSL', title: 'WSL environment', icon: 'cloud', remote: true };
+  if (remoteName === 'ssh-remote') return { short: 'SSH', title: 'Remote SSH host', icon: 'cloud', remote: true };
+  if (remoteName === 'dev-container' || remoteName === 'attached-container') return { short: 'DEV', title: 'Dev Container allocation', icon: 'cloud', remote: true };
+  if (remoteName) return { short: 'REMOTE', title: `Remote environment (${remoteName})`, icon: 'cloud', remote: true };
+  return { short: 'LOCAL', title: 'Local host', icon: 'device-desktop', remote: false };
 }
 
 function hostHealth(metrics) {
@@ -141,22 +141,23 @@ function classifyAgent(observation, now = Date.now(), slowThresholdMs = 45000, f
   if (observation.failed && age <= failureAttentionMs) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Failed', age };
   if (observation.failed) return { ...observation, active: false, state: STATES.IDLE, color: 'gray', label: 'Idle', age, evidence: `Previous session failed ${formatAge(age)} ago; no session is active` };
   if (observation.cancelled || observation.phase === 'cancelled') return { ...observation, state: STATES.CANCELLED, color: 'gray', label: 'Cancelled' };
-  if (observation.phase === 'waiting_input') return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for your input' };
-  if (observation.needsApproval) return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for approval' };
-  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Limited visibility', age: Math.max(0, now - observation.lastActivityAt) };
+  if (observation.phase === 'waiting_input') return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for your input', shortLabel: 'Waiting' };
+  if (observation.needsApproval) return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for approval', shortLabel: 'Waiting' };
+  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Limited visibility', shortLabel: 'Limited', age: Math.max(0, now - observation.lastActivityAt) };
   if (observation.phase === 'completed' && now - observation.lastActivityAt < 10 * 60_000) return { ...observation, state: STATES.COMPLETED, color: 'green', label: 'Done', age: Math.max(0, now - observation.lastActivityAt) };
   if (!observation.active) return { ...observation, state: STATES.IDLE, color: 'gray', label: 'Idle', age: Math.max(0, now - observation.lastActivityAt) };
-  if (observation.processAlive === false && observation.processEvidenceVerified && observation.active) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Process exited' };
+  if (observation.processAlive === false && observation.processEvidenceVerified && observation.active) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Process exited', shortLabel: 'Exited' };
   if (observation.phase === 'sending_model' && observation.liveEvidence && age >= 2000) {
-    return { ...observation, state: STATES.MODEL, phase: 'waiting_model', color: 'green', label: 'Waiting for LLM', age, confidence: 'inferred' };
+    return { ...observation, state: STATES.MODEL, phase: 'waiting_model', color: 'green', label: 'Waiting for LLM', shortLabel: 'LLM…', age, confidence: 'inferred' };
   }
   if (observation.phase === 'undisclosed' || observation.phase === 'working') {
-    return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Running · step undisclosed', age };
+    return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Running · step undisclosed', shortLabel: 'Active', age };
   }
   const labels = { preparing_context: 'Preparing context', reading: 'Reading files', searching: 'Searching', editing: 'Editing files', tool: 'Running tool', command: 'Running command', mcp: 'Calling MCP', browser: 'Using browser', sending_model: 'Sending to LLM', waiting_model: 'Waiting for LLM', receiving_model: 'Receiving LLM', parsing: 'Parsing response', model: 'LLM request', completed: 'Done' };
+  const shortLabels = { preparing_context: 'Preparing', reading: 'Reading', searching: 'Searching', editing: 'Editing', tool: 'Tool', command: 'Command', mcp: 'MCP', browser: 'Browser', sending_model: 'Sending', waiting_model: 'LLM…', receiving_model: 'Receiving', parsing: 'Parsing', model: 'LLM…', completed: 'Done' };
   const state = labels[observation.phase] ? observation.phase : STATES.WORKING;
   const prefix = observation.liveEvidence === false && age >= slowThresholdMs ? 'Last seen: ' : '';
-  return { ...observation, state, color: observation.liveEvidence === false ? 'gray' : 'green', label: `${prefix}${labels[state] || 'Running · step undisclosed'}`, age };
+  return { ...observation, state, color: observation.liveEvidence === false ? 'gray' : 'green', label: `${prefix}${labels[state] || 'Running · step undisclosed'}`, shortLabel: shortLabels[state] || 'Active', age };
 }
 
 function formatAge(milliseconds) {

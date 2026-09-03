@@ -137,7 +137,10 @@ function updateStatus() {
   const agentIcon = !primary ? '$(circle-slash)' : primary.state === 'idle' ? '$(circle-outline)' : primary.color === 'gray' ? '$(circle-slash)' : '$(circle-filled)';
   if (!primary) statusItem.text = mode === 'compact' ? `${agentIcon}` : `${agentIcon} No agent`;
   else if (primary.statusLabel) statusItem.text = `${agentIcon} ${primary.statusLabel}`;
-  else statusItem.text = mode === 'compact' ? `${agentIcon} ${primary.label}` : `${agentIcon} ${primary.name}: ${primary.label}`;
+  else {
+    const conciseState = primary.shortLabel || primary.label;
+    statusItem.text = mode === 'compact' ? `${agentIcon} ${conciseState}` : `${agentIcon} ${primary.name}: ${conciseState}`;
+  }
   statusItem.color = dominant === 'green' ? undefined : foregroundColors[dominant];
   statusItem.backgroundColor = dominant === 'red' || dominant === 'yellow' ? colors[dominant] : undefined;
   const healthLabel = snapshot.health.color === 'red' ? 'Critical' : snapshot.health.color === 'yellow' ? 'Pressure' : 'Healthy';
@@ -151,12 +154,10 @@ function updateStatus() {
   statusItem.tooltip = new vscode.MarkdownString(`**Agent Runtime Lens** · data ${snapshot.freshness}\n\n${diagnosis(primary, snapshot.health)}\n\n| Agent | State | Source | For |\n|---|---|---|---|\n| ${primary?.name || '—'} | ${primary?.label || 'No agent'} | ${evidenceLabel(primary)} | ${agentAge} |\n\n| Resource boundary | Current facts |\n|---|---|\n| ${scope} | ${metricSummary(snapshot.host)} |${peerLine}\n\nTrends: CPU ${cpuTrend} · memory ${memoryTrend} · network ${networkTrend}\n\nClick for Flight Recorder and raw evidence.`);
   statusItem.accessibilityInformation = { label: `Agent Runtime Lens. ${primary ? `${primary.name}, ${primary.label}` : 'No detected agent'}. Environment ${snapshot.health.color}.` };
   statusItem.show();
-  const environmentLabel = environment.short;
   const peerColor = snapshot.peerHost?.unavailable ? 'gray' : snapshot.peerHealth?.color || 'green';
-  const peerSuffix = snapshot.remoteName === 'wsl' ? snapshot.peerHost?.unavailable ? ' · WIN$(circle-slash)' : snapshot.peerHealth?.color === 'red' ? ' · WIN$(error)' : snapshot.peerHealth?.color === 'yellow' ? ' · WIN$(warning)' : ' · WIN' : '';
-  resourceItems.environment.text = `$(remote) ${environmentLabel}${peerSuffix}`;
+  resourceItems.environment.text = `$(${environment.icon})`;
   resourceItems.environment.color = peerColor === 'green' ? undefined : foregroundColors[peerColor];
-  resourceItems.environment.tooltip = snapshot.remoteName === 'wsl' ? 'Metrics shown: WSL execution environment\nWindows host is also sampled and shown in the dashboard.' : `Metrics shown: ${environmentLabel}`;
+  resourceItems.environment.tooltip = snapshot.remoteName === 'wsl' ? 'Metrics shown: WSL execution environment\nWindows host is also sampled and shown in the dashboard.' : `Metrics shown: ${environment.title}`;
   resourceItems.environment.accessibilityInformation = { label: `Execution environment ${environment.title}` };
   resourceItems.environment.show();
   const memoryTotal = formatCapacity(snapshot.host.totalMemoryBytes);

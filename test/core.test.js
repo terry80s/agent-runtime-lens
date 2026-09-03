@@ -93,21 +93,36 @@ test('stale samples and evidence strength are explicit', () => {
 });
 
 test('remote environments never masquerade as local', () => {
-  assert.deepEqual(environmentKind('ssh-remote', 'host'), { short: 'SSH', title: 'Remote SSH host' });
-  assert.deepEqual(environmentKind('wsl', 'host'), { short: 'WSL', title: 'WSL environment' });
-  assert.deepEqual(environmentKind('dev-container', 'container'), { short: 'CTR', title: 'Container allocation' });
+  assert.deepEqual(environmentKind(undefined, 'host'), { short: 'LOCAL', title: 'Local host', icon: 'device-desktop', remote: false });
+  assert.deepEqual(environmentKind('ssh-remote', 'host'), { short: 'SSH', title: 'Remote SSH host', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind('wsl', 'host'), { short: 'WSL', title: 'WSL environment', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind('dev-container', 'container'), { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true });
 });
 
 test('approval is blue and outranks inactivity', () => {
   const result = classifyAgent({ name: 'Cline', active: true, needsApproval: true, processAlive: true, lastActivityAt: 0 }, 1_000_000, 1000);
   assert.equal(result.color, 'blue');
   assert.equal(result.state, 'approval');
+  assert.equal(result.label, 'Waiting for approval');
+  assert.equal(result.shortLabel, 'Waiting');
+});
+
+test('input and model waits stay distinct while status labels remain compact', () => {
+  const input = classifyAgent({ name: 'Cline', phase: 'waiting_input', active: true, processAlive: true, lastActivityAt: 1000 }, 2000);
+  const model = classifyAgent({ name: 'Cline', phase: 'waiting_model', active: true, processAlive: true, lastActivityAt: 1000 }, 2000);
+  assert.equal(input.label, 'Waiting for your input');
+  assert.equal(input.shortLabel, 'Waiting');
+  assert.equal(input.color, 'blue');
+  assert.equal(model.label, 'Waiting for LLM');
+  assert.equal(model.shortLabel, 'LLM…');
+  assert.notEqual(model.color, 'blue');
 });
 
 test('silence without a heartbeat contract never becomes a false stall', () => {
   const result = classifyAgent({ name: 'Cline', phase: 'undisclosed', active: true, processAlive: true, lastActivityAt: 0, confidence: 'verified' }, 400000, 1000);
   assert.equal(result.color, 'gray');
   assert.equal(result.label, 'Running · step undisclosed');
+  assert.equal(result.shortLabel, 'Active');
 });
 
 test('old persisted evidence is idle rather than working', () => {
