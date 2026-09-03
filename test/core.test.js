@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { clinePhaseFromMessage, readClineEventFile, claudePhaseFromRecord, cgroupMetrics, readClineDatabase, currentClineLifecycle, selectMostConstrainedDisk } = require('../src/detectors');
-const { phaseFromClineEvent } = require('../src/cline-api');
+const { phaseFromClineEvent, createClineApiAdapter } = require('../src/cline-api');
 
 test('healthy host is green', () => {
   assert.deepEqual(hostHealth({ cpuPercent: 30, memoryPercent: 40, diskFreePercent: 70, network: 'online', networkLatencyMs: 20 }), { score: 100, color: 'green', reasons: [] });
@@ -96,7 +96,10 @@ test('remote environments never masquerade as local', () => {
   assert.deepEqual(environmentKind(undefined, 'host'), { short: 'LOCAL', title: 'Local host', icon: 'device-desktop', remote: false });
   assert.deepEqual(environmentKind('ssh-remote', 'host'), { short: 'SSH', title: 'Remote SSH host', icon: 'cloud', remote: true });
   assert.deepEqual(environmentKind('wsl', 'host'), { short: 'WSL', title: 'WSL environment', icon: 'cloud', remote: true });
-  assert.deepEqual(environmentKind('dev-container', 'container'), { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind('dev-container', 'container'), { short: 'DEV', title: 'Dev Container allocation', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind(undefined, 'container'), { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind(undefined, 'kubernetes-pod'), { short: 'POD', title: 'Pod allocation', icon: 'cloud', remote: true });
+  assert.deepEqual(environmentKind('codespaces', 'host'), { short: 'REMOTE', title: 'Remote environment (codespaces)', icon: 'cloud', remote: true });
 });
 
 test('approval is blue and outranks inactivity', () => {
@@ -116,6 +119,28 @@ test('input and model waits stay distinct while status labels remain compact', (
   assert.equal(model.label, 'Waiting for LLM');
   assert.equal(model.shortLabel, 'LLM…');
   assert.notEqual(model.color, 'blue');
+  assert.equal(input.age, 1000);
+});
+
+test('all active phases have concise unambiguous status labels', () => {
+  const expected = {
+    preparing_context: 'Preparing', reading: 'Reading', searching: 'Searching', editing: 'Editing',
+    tool: 'Tool', command: 'Command', mcp: 'MCP', browser: 'Browser', sending_model: 'Sending',
+    waiting_model: 'LLM…', receiving_model: 'Receiving', parsing: 'Parsing', model: 'LLM…'
+  };
+  for (const [phase, shortLabel] of Object.entries(expected)) {
+    const result = classifyAgent({ name: 'Cline', phase, active: true, processAlive: true, lastActivityAt: 1000 }, 2000);
+    assert.equal(result.shortLabel, shortLabel, phase);
+    assert.ok(result.label.length >= shortLabel.length, phase);
+  }
+});
+
+test('missing and future activity timestamps never produce invalid ages', () => {
+  const missing = classifyAgent({ name: 'Cline', phase: 'reading', active: true }, 2000);
+  const future = classifyAgent({ name: 'Cline', phase: 'reading', active: true, lastActivityAt: 3000 }, 2000);
+  assert.equal(missing.age, 0);
+  assert.equal(future.age, 0);
+  assert.ok(Number.isFinite(missing.age));
 });
 
 test('silence without a heartbeat contract never becomes a false stall', () => {
@@ -167,6 +192,9 @@ test('installed-only Copilot does not hide a supported Agent', () => {
 
 test('primary agent is the one requiring most attention', () => {
   assert.equal(choosePrimary([{ name: 'Cline', color: 'green', lastActivityAt: 2 }, { name: 'Claude', color: 'red', lastActivityAt: 1 }]).name, 'Claude');
+  assert.equal(choosePrimary([]), undefined);
+  assert.equal(choosePrimary(undefined), undefined);
+  assert.equal(choosePrimary([{ name: 'Unknown' }, { name: 'Cline', color: 'yellow' }]).name, 'Cline');
 });
 
 test('diagnostic export redacts secrets and home usernames', () => {
@@ -195,6 +223,17 @@ test('Cline event file chooses the latest meaningful operation', () => {
   const signal = readClineEventFile(eventPath);
   assert.equal(signal.phase, 'receiving_model');
   assert.doesNotMatch(signal.evidence, /private/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('Cline event reader tolerates missing, malformed, and partially written files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-runtime-lens-malformed-'));
+  const eventPath = path.join(root, 'events.jsonl');
+  assert.equal(readClineEventFile(path.join(root, 'missing.jsonl')), undefined);
+  fs.writeFileSync(eventPath, '{incomplete json\n');
+  assert.equal(readClineEventFile(eventPath), undefined);
+  fs.appendFileSync(eventPath, JSON.stringify({ timestamp: 2000, phase: 'reading' }) + '\n');
+  assert.equal(readClineEventFile(eventPath).phase, 'reading');
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -383,6 +422,25 @@ test('Cline SDK kebab-case runtime events map to useful states', () => {
   assert.equal(live.evidenceSource, 'live');
   assert.equal(phaseFromClineEvent({ type: 'reasoning-delta' }).phase, 'receiving_model');
   assert.equal(phaseFromClineEvent({ type: 'resumable' }).phase, 'waiting_input');
+});
+
+test('Cline API adapter handles unavailable APIs, alternate event hubs, and disposal', async () => {
+  const inactive = createClineApiAdapter({ extensions: { getExtension: () => ({ isActive: false }) } }, () => {});
+  assert.equal(await inactive.connect(), false);
+
+  let listener;
+  let disposed = false;
+  const observations = [];
+  const api = { hub: { onDidChangeTask(callback) { listener = callback; return { dispose() { disposed = true; } }; } } };
+  const adapter = createClineApiAdapter({ extensions: { getExtension: () => ({ isActive: true, exports: api }) } }, value => observations.push(value));
+  assert.equal(await adapter.connect(), true);
+  assert.equal(await adapter.connect(), true);
+  listener({ type: 'tool_started', payload: { name: 'read_file', secret: 'private' } });
+  assert.equal(observations[0].phase, 'reading');
+  assert.doesNotMatch(observations[0].evidence, /private/);
+  assert.deepEqual(adapter.apiShape, ['hub']);
+  adapter.dispose();
+  assert.equal(disposed, true);
 });
 
 test('verified model request transitions to normal LLM wait without becoming slow', () => {

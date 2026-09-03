@@ -2,7 +2,7 @@
   "name": "ai-agent-runtime-lens",
   "displayName": "Agent Runtime Lens",
   "description": "Monitor Cline and Claude Code activity, detect GitHub Copilot availability, and see whether host pressure is slowing development down.",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "publisher": "terry80s",
   "icon": "assets/agent-runtime-lens-icon.png",
   "license": "MIT",

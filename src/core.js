@@ -79,10 +79,10 @@ function shouldUseLiveObservation(live, persisted, now = Date.now()) {
 
 function environmentKind(remoteName, resourceScope) {
   if (resourceScope === 'kubernetes-pod') return { short: 'POD', title: 'Pod allocation', icon: 'cloud', remote: true };
-  if (resourceScope === 'container') return { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true };
   if (remoteName === 'wsl') return { short: 'WSL', title: 'WSL environment', icon: 'cloud', remote: true };
   if (remoteName === 'ssh-remote') return { short: 'SSH', title: 'Remote SSH host', icon: 'cloud', remote: true };
   if (remoteName === 'dev-container' || remoteName === 'attached-container') return { short: 'DEV', title: 'Dev Container allocation', icon: 'cloud', remote: true };
+  if (resourceScope === 'container') return { short: 'CTR', title: 'Container allocation', icon: 'cloud', remote: true };
   if (remoteName) return { short: 'REMOTE', title: `Remote environment (${remoteName})`, icon: 'cloud', remote: true };
   return { short: 'LOCAL', title: 'Local host', icon: 'device-desktop', remote: false };
 }
@@ -136,17 +136,18 @@ function metricStatus(kind, value, extra = {}) {
 
 function classifyAgent(observation, now = Date.now(), slowThresholdMs = 45000, failureAttentionMs = 120000) {
   if (!observation) return { state: STATES.IDLE, color: 'gray', label: 'No agent', confidence: 'observed' };
-  if (observation.unsupportedTelemetry) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Activity unavailable', statusLabel: observation.id === 'copilot' ? 'Copilot' : observation.name, age: Math.max(0, now - observation.lastActivityAt) };
-  const age = Math.max(0, now - observation.lastActivityAt);
+  const observedAt = Number.isFinite(observation.lastActivityAt) ? observation.lastActivityAt : now;
+  const age = Math.max(0, now - observedAt);
+  if (observation.unsupportedTelemetry) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Activity unavailable', statusLabel: observation.id === 'copilot' ? 'Copilot' : observation.name, age };
   if (observation.failed && age <= failureAttentionMs) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Failed', age };
   if (observation.failed) return { ...observation, active: false, state: STATES.IDLE, color: 'gray', label: 'Idle', age, evidence: `Previous session failed ${formatAge(age)} ago; no session is active` };
-  if (observation.cancelled || observation.phase === 'cancelled') return { ...observation, state: STATES.CANCELLED, color: 'gray', label: 'Cancelled' };
-  if (observation.phase === 'waiting_input') return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for your input', shortLabel: 'Waiting' };
-  if (observation.needsApproval) return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for approval', shortLabel: 'Waiting' };
-  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Limited visibility', shortLabel: 'Limited', age: Math.max(0, now - observation.lastActivityAt) };
-  if (observation.phase === 'completed' && now - observation.lastActivityAt < 10 * 60_000) return { ...observation, state: STATES.COMPLETED, color: 'green', label: 'Done', age: Math.max(0, now - observation.lastActivityAt) };
-  if (!observation.active) return { ...observation, state: STATES.IDLE, color: 'gray', label: 'Idle', age: Math.max(0, now - observation.lastActivityAt) };
-  if (observation.processAlive === false && observation.processEvidenceVerified && observation.active) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Process exited', shortLabel: 'Exited' };
+  if (observation.cancelled || observation.phase === 'cancelled') return { ...observation, state: STATES.CANCELLED, color: 'gray', label: 'Cancelled', age };
+  if (observation.phase === 'waiting_input') return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for your input', shortLabel: 'Waiting', age };
+  if (observation.needsApproval) return { ...observation, state: STATES.APPROVAL, color: 'blue', label: 'Waiting for approval', shortLabel: 'Waiting', age };
+  if (observation.visibilityLimited) return { ...observation, state: STATES.UNKNOWN, color: 'gray', label: 'Limited visibility', shortLabel: 'Limited', age };
+  if (observation.phase === 'completed' && age < 10 * 60_000) return { ...observation, state: STATES.COMPLETED, color: 'green', label: 'Done', age };
+  if (!observation.active) return { ...observation, state: STATES.IDLE, color: 'gray', label: 'Idle', age };
+  if (observation.processAlive === false && observation.processEvidenceVerified && observation.active) return { ...observation, state: STATES.FAILED, color: 'red', label: 'Process exited', shortLabel: 'Exited', age };
   if (observation.phase === 'sending_model' && observation.liveEvidence && age >= 2000) {
     return { ...observation, state: STATES.MODEL, phase: 'waiting_model', color: 'green', label: 'Waiting for LLM', shortLabel: 'LLM…', age, confidence: 'inferred' };
   }
@@ -169,7 +170,8 @@ function formatAge(milliseconds) {
 }
 
 function choosePrimary(agents) {
-  return [...agents].sort((a, b) => Number(Boolean(a.unsupportedTelemetry)) - Number(Boolean(b.unsupportedTelemetry)) || (SEVERITY[b.color] - SEVERITY[a.color]) || (b.lastActivityAt - a.lastActivityAt))[0];
+  if (!Array.isArray(agents) || agents.length === 0) return undefined;
+  return [...agents].sort((a, b) => Number(Boolean(a?.unsupportedTelemetry)) - Number(Boolean(b?.unsupportedTelemetry)) || ((SEVERITY[b?.color] ?? 0) - (SEVERITY[a?.color] ?? 0)) || ((Number(b?.lastActivityAt) || 0) - (Number(a?.lastActivityAt) || 0)))[0];
 }
 
 function redact(value) {
